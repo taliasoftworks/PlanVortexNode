@@ -93,10 +93,39 @@ export { TOKEN_REFRESH_MARGIN_MS } from "./core/auth.js";
 export type { AuthProvider, ClientCredentialsToken } from "./core/auth.js";
 
 /**
- * Los dos ayudantes de `id_account`, que la API devuelve poblado o como cadena según la operación.
- * Son las únicas funciones de `types.ts`: todo lo demás de ahí es `type`.
+ * Los ayudantes de los campos que la API devuelve poblados o como cadena según la operación:
+ * `id_account` en una publicación, y el contacto y los ficheros en un mensaje. Son las únicas
+ * funciones de `types.ts`: todo lo demás de ahí es `type`.
  */
-export { account, accountId } from "./types.js";
+export {
+    account,
+    accountId,
+    messageContact,
+    messageContactId,
+    messageDirection,
+    messageFileIds,
+    messageFiles,
+} from "./types.js";
+
+/**
+ * Los tipos de los webhooks, para no obligar a importar de dos sitios sólo para nombrar un evento.
+ *
+ * Las FUNCIONES —`verifyWebhookSignature`, `handleWebhookRequest`, `planvortexWebhooks`— se
+ * quedan en `planvortex/webhooks` a propósito: quien recibe webhooks casi nunca es el mismo
+ * proceso que publica, y ese punto de entrada existe para que su endpoint no cargue el cliente
+ * entero. Reexportar tipos no cuesta un byte; reexportar las funciones se lo cargaría.
+ */
+export type {
+    AccountStateChange,
+    AccountWebhookChangeBase,
+    CommentChange,
+    IntegrationErrorChange,
+    MessageChange,
+    UnknownWebhookChange,
+    WebhookAlgorithm,
+    WebhookChange,
+    WebhookEvent,
+} from "./webhooks/index.js";
 
 /**
  * Los tipos de la API, generados del OpenAPI público (fase 5). Todo lo que hay aquí es `type`: no
@@ -151,5 +180,4 @@ export type {
     SocialLimitsMap,
     SocialNetwork,
     Upload,
-    WebhookChange,
 } from "./types.js";

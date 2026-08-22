@@ -4068,7 +4068,7 @@
                     "contacts": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/ContactsContact"
+                        "$ref": "#/components/schemas/Contact"
                       }
                     },
                     "total": {
@@ -4120,7 +4120,7 @@
                   "type": "object",
                   "properties": {
                     "contact": {
-                      "$ref": "#/components/schemas/ContactsContact"
+                      "$ref": "#/components/schemas/Contact"
                     }
                   }
                 }
@@ -4196,7 +4196,7 @@
                   "type": "object",
                   "properties": {
                     "contact": {
-                      "$ref": "#/components/schemas/ContactsContact"
+                      "$ref": "#/components/schemas/Contact"
                     }
                   }
                 }
@@ -5346,7 +5346,7 @@
                     "messages": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/MessagesMessage"
+                        "$ref": "#/components/schemas/Message"
                       }
                     },
                     "total": {
@@ -5404,7 +5404,7 @@
                   "type": "object",
                   "properties": {
                     "message": {
-                      "$ref": "#/components/schemas/MessagesMessage"
+                      "$ref": "#/components/schemas/Message"
                     }
                   }
                 }
@@ -8888,8 +8888,8 @@
         "tags": [
           "webhooks"
         ],
-        "summary": "A comment arrived (notification to your app)",
-        "description": "PlanVortex `POST`s to the `webhook_url` of your client app when a comment comes in. The body is an **array** of changes, and each one carries `field` telling you what it is.\n\n`field: \"comments\"` is the one for this section, and the comment itself travels in **`commentObj`** — a property of its own, never in `messageObj`. That is deliberate: a comment is not a message, it has no contact and it hangs off a publication. A consumer that only understands messages sees `commentObj` as absent and ignores the change, which is exactly what should happen.\n\n**Which networks arrive this way:** Facebook and Instagram, because Meta pushes them. YouTube, LinkedIn and Google Business have no comment webhook, so those are polled by a background job and appear in the inbox within a few hours rather than instantly. X is polled too, and only when the organization turns it on, because reading replies there is billed per unit.\n\n**Meta repeats deliveries.** The same comment can arrive more than once; the backend is idempotent about it and so should you be — deduplicate on `commentObj.external_id`.\n\n### Verifying the signature\n\nEvery delivery carries the body signed with your app's secret, twice:\n\n- `x-hub-signature`: `sha1=<hmac>`\n- `x-hub-signature-256`: `sha256=<hmac>`\n\nCompute the HMAC over the **raw** request body — not over a re-serialized copy of the parsed JSON — and compare in constant time. Prefer the sha256 header.",
+        "summary": "A change happened (notification to your app)",
+        "description": "PlanVortex `POST`s to the `webhook_url` of your client app when something happens. **The body is an array of changes**, and each one carries `field` telling you what it is — switch on it and ignore what you do not handle, because the list grows with the product.\n\nTwo shapes travel in that array. A change on an **account** (`WebhookChange`) always carries `id_account`, `id_organization` and `social_network`. A change on an **integration** (`IntegrationWebhookChange`) carries none of those, because an integration hangs off the organization and not off any account.\n\nThe events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments` and `integration_error`.\n\n### Comments\n\n`field: \"comments\"` is the one for this section, and the comment itself travels in **`commentObj`** — a property of its own, never in `messageObj`. That is deliberate: a comment is not a message, it has no contact and it hangs off a publication. A consumer that only understands messages sees `commentObj` as absent and ignores the change, which is exactly what should happen.\n\n**Which networks arrive this way:** Facebook and Instagram, because Meta pushes them. YouTube, LinkedIn and Google Business have no comment webhook, so those are polled by a background job and appear in the inbox within a few hours rather than instantly. X is polled too, and only when the organization turns it on, because reading replies there is billed per unit.\n\n**Meta repeats deliveries.** The same comment can arrive more than once; the backend is idempotent about it and so should you be — deduplicate on `commentObj.external_id`.\n\n### Verifying the signature\n\nEvery delivery carries the body signed with your app's secret, twice:\n\n- `x-hub-signature`: `sha1=<hmac>`\n- `x-hub-signature-256`: `sha256=<hmac>`\n\nCompute the HMAC over the **raw** request body — not over a re-serialized copy of the parsed JSON — and compare in constant time. Prefer the sha256 header.\n\nDelivery is best effort: PlanVortex does not retry a webhook that fails.",
         "operationId": "onCommentsWebhook",
         "requestBody": {
           "required": true,
@@ -8898,7 +8898,14 @@
               "schema": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/CommentsWebhookChange"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CommentsWebhookChange"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CommentsIntegrationWebhookChange"
+                    }
+                  ]
                 }
               },
               "example": [
@@ -9533,7 +9540,7 @@
           },
           "webhook_url": {
             "type": "string",
-            "description": "Where PlanVortex posts events, when one is configured.\n\n**The body is an array of changes, not a single object**, and it carries two signature headers computed with this app's secret over the **raw** body: `x-hub-signature` (`sha1=<hex>`) and `x-hub-signature-256` (`sha256=<hex>`). Verify against the bytes you received — parsing the JSON and re-serialising it changes them and the signature will not match.\n\nThe events delivered today are `new_account`, `change_state_account`, `messages`, `comments` and `integration_error`. The payload is documented in the `comments` specification. Delivery is best effort: PlanVortex does not retry a webhook that fails."
+            "description": "Where PlanVortex posts events, when one is configured.\n\n**The body is an array of changes, not a single object**, and it carries two signature headers computed with this app's secret over the **raw** body: `x-hub-signature` (`sha1=<hex>`) and `x-hub-signature-256` (`sha256=<hex>`). Verify against the bytes you received — parsing the JSON and re-serialising it changes them and the signature will not match.\n\nThe events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments` and `integration_error`. The payload is documented in the `comments` specification. Delivery is best effort: PlanVortex does not retry a webhook that fails."
           },
           "creation_date": {
             "type": "string",
@@ -10382,6 +10389,39 @@
           }
         }
       },
+      "CommentsIntegrationWebhookChange": {
+        "type": "object",
+        "description": "One change in the array PlanVortex posts to your app's `webhook_url`, when an **integration** stopped working: a revoked Google Drive token, a feed that no longer answers, a publication quota that ran out.\n\nIt carries neither `id_account` nor `social_network`, because an integration hangs off the organization and not off any account — which is exactly why it is a type of its own. A consumer that only understands account changes sees a `field` it does not know and ignores it, which is what should happen.",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "integration_error"
+            ]
+          },
+          "id_integration": {
+            "type": "string"
+          },
+          "id_organization": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "description": "`google_drive` or `rss` today. **This list grows**: treat it as an open enumeration."
+          },
+          "error_code": {
+            "type": "integer",
+            "description": "PlanVortex error code saying what went wrong. Integration codes live in the 2200-2299 range."
+          }
+        },
+        "required": [
+          "field",
+          "id_integration",
+          "id_organization",
+          "provider",
+          "error_code"
+        ]
+      },
       "CommentsSocialCapabilities": {
         "type": "object",
         "description": "The coarse gates of one network",
@@ -10416,19 +10456,19 @@
       },
       "CommentsWebhookChange": {
         "type": "object",
-        "description": "One change in the array PlanVortex posts to your app's `webhook_url`",
+        "description": "One change in the array PlanVortex posts to your app's `webhook_url`, when the change concerns a social **account**.\n\nAn integration that stopped working has a shape of its own — `IntegrationWebhookChange` — and one delivery can mix both. Switch on `field`, and ignore what you do not handle.",
         "properties": {
           "field": {
             "type": "string",
-            "description": "What kind of change this is. Treat it as an open list and ignore what you do not handle.",
+            "description": "What kind of change this is. **Treat it as an open list** and ignore what you do not handle: it grows with the product.\n\n- `new_account` / `change_state_account`: an account was connected, or its state changed — it stopped working, its token was refreshed, it was disconnected.\n- `messages`: a message came in. It travels in `messageObj`.\n- `messaging_postbacks`: the contact pressed a button or a quick reply. Also in `messageObj`.\n- `messaging_seen`: the contact read the conversation. `messageObj` carries the message they read, when we still have it.\n- `messaging_error`: the network refused a message we sent. The reason is in `messageObj.message_errors`.\n- `comments`: a comment came in. It travels in `commentObj`, never in `messageObj`.",
             "enum": [
               "new_account",
               "change_state_account",
-              "comments",
               "messages",
-              "message_reactions",
               "messaging_postbacks",
-              "mentions"
+              "messaging_seen",
+              "messaging_error",
+              "comments"
             ]
           },
           "id_account": {
@@ -10438,7 +10478,7 @@
             "type": "string"
           },
           "social_network": {
-            "type": "string"
+            "$ref": "#/components/schemas/SocialNetwork"
           },
           "commentObj": {
             "allOf": [
@@ -10446,24 +10486,36 @@
                 "$ref": "#/components/schemas/CommentsComment"
               }
             ],
-            "description": "The comment. Present only when `field` is `comments`."
+            "description": "The comment. Present only when `field` is `comments`, and absent even then if the author deleted a comment we had never seen."
           },
           "messageObj": {
-            "type": "object",
-            "description": "The message. Present only for messaging fields — a comment never travels in here."
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Message"
+              }
+            ],
+            "description": "The message. Present for the messaging fields, never for a comment — a comment is not a message and does not travel in here.\n\nIt arrives **populated**: `contact_id`, `from_contact_id` and `message_options.files` carry whole objects. On `messaging_seen` and `messaging_error` it can be absent, because the message being acknowledged may not be one of ours."
           },
           "id_contact": {
             "type": "string",
-            "description": "Only for messaging fields. A comment has no contact."
+            "description": "Only for messaging fields. A comment has no contact: its author is not someone you can write to."
           },
           "originalChange": {
             "type": "object",
-            "description": "The raw payload the social network sent, passed through untouched"
+            "additionalProperties": true,
+            "description": "The raw payload the social network sent, passed through untouched. Absent on the changes PlanVortex raises itself, such as `new_account`."
           }
-        }
+        },
+        "required": [
+          "field",
+          "id_account",
+          "id_organization",
+          "social_network"
+        ]
       },
-      "ContactsContact": {
+      "Contact": {
         "type": "object",
+        "description": "A person the organization exchanges messages with. The same contact can be reachable on several channels — that is what `social_identifiers` is.",
         "properties": {
           "_id": {
             "type": "string"
@@ -10481,11 +10533,15 @@
           "social_identifiers": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ContactsSocialIdentifier"
+              "$ref": "#/components/schemas/SocialIdentifier"
             }
           },
           "extra_data": {
-            "$ref": "#/components/schemas/ContactsContactExtraData"
+            "$ref": "#/components/schemas/ContactExtraData"
+          },
+          "creator_keycloak_identifier": {
+            "type": "string",
+            "description": "The user who created the contact, when it was created from the panel instead of arriving from a network."
           },
           "creation_date": {
             "type": "string",
@@ -10496,9 +10552,33 @@
             "format": "date-time",
             "description": "Last time the contact's profile was refreshed from the network."
           }
-        }
+        },
+        "required": [
+          "_id",
+          "id_organization",
+          "social_identifiers",
+          "creation_date",
+          "last_contact_update"
+        ]
       },
-      "ContactsContactExtraData": {
+      "ContactChannel": {
+        "type": "string",
+        "description": "Where a contact can be reached. Every social network that has messaging, plus `email` for a contact created by hand instead of arriving from a network.\n\n**This list grows** with the networks: treat it as an open enumeration.",
+        "enum": [
+          "facebook",
+          "instagram",
+          "linkedin",
+          "tiktok",
+          "twitter",
+          "whatsapp",
+          "youtube",
+          "google_business",
+          "bluesky",
+          "discord",
+          "email"
+        ]
+      },
+      "ContactExtraData": {
         "type": "object",
         "description": "Your own fields on the contact. The address block is known to PlanVortex; the six generic properties are yours to use, and they are what `extra_data` filters on.",
         "properties": {
@@ -10521,19 +10601,34 @@
             "type": "string"
           },
           "zip_code": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           },
           "number": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           },
           "building": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           },
           "floor": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           },
           "door": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           },
           "coords": {
             "type": "array",
@@ -10574,32 +10669,11 @@
           "social_identifiers": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ContactsSocialIdentifier"
+              "$ref": "#/components/schemas/SocialIdentifier"
             }
           },
           "extra_data": {
-            "$ref": "#/components/schemas/ContactsContactExtraData"
-          }
-        }
-      },
-      "ContactsSocialIdentifier": {
-        "type": "object",
-        "description": "The same person, on one network.",
-        "properties": {
-          "_id": {
-            "type": "string"
-          },
-          "external_identifier": {
-            "type": "string",
-            "description": "Identifier of the contact on that network."
-          },
-          "social_network": {
-            "$ref": "#/components/schemas/SocialNetwork"
-          },
-          "last_send_date": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Last message received from the contact. On WhatsApp it is what opens the 24-hour window in which a free-form message is allowed."
+            "$ref": "#/components/schemas/ContactExtraData"
           }
         }
       },
@@ -11310,108 +11384,9 @@
           }
         }
       },
-      "MessagesContact": {
+      "Message": {
         "type": "object",
-        "description": "The person on the other side. The full resource lives in the contacts specification.",
-        "properties": {
-          "_id": {
-            "type": "string"
-          },
-          "id_organization": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "profile_image": {
-            "type": "string",
-            "description": "URL of the contact's avatar on the network. It is the network's URL, and it can expire."
-          },
-          "social_identifiers": {
-            "type": "array",
-            "description": "The same person on each network. A contact can be one entry or several.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "_id": {
-                  "type": "string"
-                },
-                "external_identifier": {
-                  "type": "string",
-                  "description": "Identifier of the contact on that network."
-                },
-                "social_network": {
-                  "$ref": "#/components/schemas/SocialNetwork"
-                },
-                "last_send_date": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Last message received from the contact. It is what opens the 24-hour window on WhatsApp."
-                }
-              }
-            }
-          },
-          "creation_date": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "MessagesConversation": {
-        "type": "object",
-        "description": "One contact's thread, as it looks in an inbox list.",
-        "properties": {
-          "contact": {
-            "$ref": "#/components/schemas/MessagesContact"
-          },
-          "date": {
-            "type": "string",
-            "format": "date-time",
-            "description": "When the last message of the thread was written, which is what the list is sorted by."
-          },
-          "unread_messages": {
-            "type": "integer",
-            "description": "Unread messages **from the contact**. Ours never count."
-          }
-        }
-      },
-      "MessagesConversationTotals": {
-        "type": "object",
-        "description": "Either `total` (no `group_by`) or `stats` plus `group` (with it). Never both.",
-        "properties": {
-          "total": {
-            "type": "integer",
-            "description": "Conversations in the range. Only when `group_by` was not sent."
-          },
-          "group": {
-            "type": "string",
-            "description": "The grouping that was applied.",
-            "enum": [
-              "day",
-              "month",
-              "year"
-            ]
-          },
-          "stats": {
-            "type": "array",
-            "description": "The series, sorted ascending. Only when `group_by` was sent.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "groupValue": {
-                  "type": "integer",
-                  "description": "Day of the year, month number or year, depending on `group`."
-                },
-                "totalConversations": {
-                  "type": "integer"
-                }
-              }
-            }
-          }
-        }
-      },
-      "MessagesMessage": {
-        "type": "object",
+        "description": "A message exchanged with a contact.\n\n**Careful with the three reference fields.** `contact_id`, `from_contact_id` and `message_options.files` arrive **populated** — the whole object, not the identifier — in the messages list and in the webhook PlanVortex posts to your app, and as plain identifiers everywhere else. The types say `string | object` because both really happen.",
         "properties": {
           "_id": {
             "type": "string"
@@ -11420,28 +11395,43 @@
             "type": "string"
           },
           "contact_id": {
-            "type": "string",
-            "description": "Set when **we** wrote to the contact. Exactly one of `contact_id` and `from_contact_id` is present, and which one tells you the direction of the message."
+            "description": "Set when **we** wrote to the contact. Exactly one of `contact_id` and `from_contact_id` is present, and which one tells you the direction of the message.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/Contact"
+              }
+            ]
           },
           "from_contact_id": {
-            "type": "string",
-            "description": "Set when the **contact** wrote to us."
+            "description": "Set when the **contact** wrote to us.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/Contact"
+              }
+            ]
           },
           "read": {
             "type": "boolean"
           },
           "text": {
-            "type": "string"
+            "type": "string",
+            "description": "Absent on the messages that carry no text of their own, such as a `messaging_seen` acknowledgement."
           },
           "message_type": {
-            "$ref": "#/components/schemas/MessagesMessageType"
+            "$ref": "#/components/schemas/MessageType"
           },
           "message_options": {
-            "$ref": "#/components/schemas/MessagesMessageOptions"
+            "$ref": "#/components/schemas/MessageOptions"
           },
           "message_errors": {
             "type": "array",
-            "description": "Why the network refused this message, if it did. Same shape as an API error.",
+            "description": "Why the network refused this message, if it did. Same shape as an API error. Empty when nothing went wrong.",
             "items": {
               "$ref": "#/components/schemas/Error"
             }
@@ -11462,39 +11452,33 @@
             "type": "string",
             "format": "date-time"
           }
-        }
-      },
-      "MessagesMessageInput": {
-        "type": "object",
+        },
         "required": [
-          "message_type"
-        ],
-        "properties": {
-          "message_type": {
-            "$ref": "#/components/schemas/MessagesMessageType"
-          },
-          "text": {
-            "type": "string",
-            "description": "Required for the text-based types. Validated against `characters` in `GET /social_limits`."
-          },
-          "message_options": {
-            "$ref": "#/components/schemas/MessagesMessageOptions"
-          },
-          "in_response_external_id": {
-            "type": "string",
-            "description": "Identifier of the publication or comment being answered. Required by `comment_message` and `publication_message`."
-          }
-        }
+          "_id",
+          "id_account",
+          "read",
+          "message_type",
+          "message_options",
+          "message_errors",
+          "creation_date"
+        ]
       },
-      "MessagesMessageOptions": {
+      "MessageOptions": {
         "type": "object",
         "description": "Everything a message can carry besides its text. Which block is required depends on `message_type`.",
         "properties": {
           "files": {
+            "description": "The uploads attached to the message. **Populated** wherever the message itself is: the messages list and webhook deliveries carry whole uploads, everything else carries their identifiers. Handle both.",
             "type": "array",
-            "description": "Identifiers of uploads of this organization.",
             "items": {
-              "type": "string"
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/Upload"
+                }
+              ]
             }
           },
           "files_urls": {
@@ -11545,9 +11529,13 @@
             "description": "WhatsApp interactive list, for `interactive_message`. It needs at least one section.",
             "additionalProperties": true
           }
-        }
+        },
+        "required": [
+          "files",
+          "files_urls"
+        ]
       },
-      "MessagesMessageType": {
+      "MessageType": {
         "type": "string",
         "description": "What kind of message this is. `simple_message` and `file_message` work everywhere; the rest are network-specific shapes.",
         "enum": [
@@ -11562,6 +11550,81 @@
           "template_message",
           "interactive_message"
         ]
+      },
+      "MessagesConversation": {
+        "type": "object",
+        "description": "One contact's thread, as it looks in an inbox list.",
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/Contact"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the last message of the thread was written, which is what the list is sorted by."
+          },
+          "unread_messages": {
+            "type": "integer",
+            "description": "Unread messages **from the contact**. Ours never count."
+          }
+        }
+      },
+      "MessagesConversationTotals": {
+        "type": "object",
+        "description": "Either `total` (no `group_by`) or `stats` plus `group` (with it). Never both.",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Conversations in the range. Only when `group_by` was not sent."
+          },
+          "group": {
+            "type": "string",
+            "description": "The grouping that was applied.",
+            "enum": [
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "stats": {
+            "type": "array",
+            "description": "The series, sorted ascending. Only when `group_by` was sent.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "groupValue": {
+                  "type": "integer",
+                  "description": "Day of the year, month number or year, depending on `group`."
+                },
+                "totalConversations": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MessagesMessageInput": {
+        "type": "object",
+        "required": [
+          "message_type"
+        ],
+        "properties": {
+          "message_type": {
+            "$ref": "#/components/schemas/MessageType"
+          },
+          "text": {
+            "type": "string",
+            "description": "Required for the text-based types. Validated against `characters` in `GET /social_limits`."
+          },
+          "message_options": {
+            "$ref": "#/components/schemas/MessageOptions"
+          },
+          "in_response_external_id": {
+            "type": "string",
+            "description": "Identifier of the publication or comment being answered. Required by `comment_message` and `publication_message`."
+          }
+        }
       },
       "Organization": {
         "type": "object",
@@ -12861,6 +12924,31 @@
             "description": "Whether a bot token is stored. Never the token."
           }
         }
+      },
+      "SocialIdentifier": {
+        "type": "object",
+        "description": "The same person, on one channel.",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "external_identifier": {
+            "type": "string",
+            "description": "Identifier of the contact on that channel."
+          },
+          "social_network": {
+            "$ref": "#/components/schemas/ContactChannel"
+          },
+          "last_send_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last message received from the contact. On WhatsApp it is what opens the 24-hour window in which a free-form message is allowed."
+          }
+        },
+        "required": [
+          "_id",
+          "social_network"
+        ]
       },
       "SocialNetwork": {
         "enum": [

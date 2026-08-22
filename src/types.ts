@@ -346,11 +346,41 @@ export type CommentAuthor = Schemas["CommentsCommentAuthor"];
 /** Una conversacion de mensajeria con un contacto. */
 export type Conversation = Schemas["MessagesConversation"];
 
-/** Un mensaje dentro de una conversacion. */
-export type Message = Schemas["MessagesMessage"];
+/**
+ * Un mensaje intercambiado con un contacto.
+ *
+ * OJO CON LOS TRES CAMPOS DE REFERENCIA. `contact_id`, `from_contact_id` y
+ * `message_options.files` llegan **poblados** —el objeto entero, no el identificador— en el
+ * listado de mensajes y en el webhook que PlanVortex manda a tu app, y como identificador a secas
+ * en el resto. Es la misma asimetria que `Publication.id_account`, y se tapa igual: con
+ * {@link messageContact}, {@link messageContactId} y {@link messageFiles}, para no escribir el
+ * `typeof` en cada sitio.
+ */
+export type Message = Override<Schemas["Message"], { message_options: MessageOptions }>;
+
+/**
+ * Lo que un mensaje lleva ademas del texto: ficheros, plantilla, payload, tarjetas de Meta.
+ *
+ * `files` se reescribe para que los adjuntos poblados sean el {@link Upload} PUBLICO —el de los
+ * formatos abiertos— y no el generado: si no, un fichero de un mensaje y uno de una publicacion
+ * serian dos tipos distintos para el mismo objeto del servidor.
+ */
+export type MessageOptions = Override<
+    Schemas["MessageOptions"],
+    { files: (string | Upload)[] }
+>;
+
+/** Que clase de mensaje es. `simple_message` y `file_message` valen en todas las redes. */
+export type MessageType = Schemas["MessageType"];
 
 /** Un contacto de la agenda de la organizacion. */
-export type Contact = Schemas["ContactsContact"];
+export type Contact = Schemas["Contact"];
+
+/** El mismo contacto, en un canal. Es una red social o `email`. */
+export type SocialIdentifier = Schemas["SocialIdentifier"];
+
+/** Donde se puede alcanzar a un contacto: cualquier red con mensajeria, o `email`. */
+export type ContactChannel = OpenEnum<Schemas["ContactChannel"]>;
 
 /** Un producto del catalogo de una cuenta (solo en las redes que venden). */
 export type Product = Schemas["ProductsProduct"];
@@ -365,12 +395,14 @@ export type AiPlan = Schemas["AiPlansAiPlan"];
 export type ClientApp = Schemas["AppsClientApp"];
 
 /**
- * Un cambio entregado a la url de webhook de una app.
+ * Los cambios que se entregan a la url de webhook de una app NO se tipan aqui.
  *
- * **El cuerpo del webhook es un ARRAY de estos**, no un objeto. Y `field` crece con el producto:
- * un valor desconocido se ignora, no se rechaza.
+ * El spec los describe planos —un solo objeto con casi todo opcional, porque eso es lo que se ve
+ * en el cable— y lo que el integrador necesita es una union discriminada por `field` con
+ * predicados que la estrechen. Eso vive en `planvortex/webhooks`, junto a la verificacion de la
+ * firma, que es donde se van a buscar. Los tipos se reexportan desde el punto de entrada
+ * principal, asi que `import type { WebhookChange } from "planvortex"` sigue valiendo.
  */
-export type WebhookChange = Schemas["CommentsWebhookChange"];
 
 // ---------------------------------------------------------------------------------------------
 // Ayudas para los campos que la API devuelve de dos formas
@@ -395,4 +427,63 @@ export function accountId(publication: Pick<Publication, "id_account">): string 
 export function account(publication: Pick<Publication, "id_account">): Account | undefined {
     const value = publication.id_account;
     return typeof value === "string" ? undefined : value;
+}
+
+/**
+ * Hacia donde va un mensaje.
+ *
+ * No es un campo: se deduce de CUAL de los dos contactos trae. `from_contact_id` es el contacto
+ * escribiendonos y `contact_id` nosotros escribiendole, y el servidor garantiza que viene
+ * exactamente uno (`ERROR_CODE_1503` si no viene ninguno, `1504` si vienen los dos). El
+ * `"unknown"` esta para el mensaje que se construye a mano y todavia no ha pasado por ahi.
+ */
+export function messageDirection(
+    message: Pick<Message, "contact_id" | "from_contact_id">,
+): "incoming" | "outgoing" | "unknown" {
+    if (message.from_contact_id) {
+        return "incoming";
+    }
+    return message.contact_id ? "outgoing" : "unknown";
+}
+
+/**
+ * El identificador del contacto de un mensaje, venga poblado o no y escriba quien escriba.
+ *
+ * Para saber la direccion esta {@link messageDirection}; aqui lo que interesa es CON QUIEN se
+ * habla, que es la misma persona en los dos sentidos.
+ */
+export function messageContactId(
+    message: Pick<Message, "contact_id" | "from_contact_id">,
+): string | undefined {
+    const value = message.from_contact_id ?? message.contact_id;
+    if (value === undefined) {
+        return undefined;
+    }
+    return typeof value === "string" ? value : value._id;
+}
+
+/**
+ * El contacto de un mensaje cuando viene poblado —el listado y el webhook—, y `undefined` cuando
+ * la API solo mando el identificador. Contrapartida de {@link messageContactId}.
+ */
+export function messageContact(
+    message: Pick<Message, "contact_id" | "from_contact_id">,
+): Contact | undefined {
+    const value = message.from_contact_id ?? message.contact_id;
+    return value === undefined || typeof value === "string" ? undefined : value;
+}
+
+/**
+ * Los ficheros adjuntos de un mensaje que vienen poblados. Los que llegaron como identificador
+ * NO salen aqui: para esos esta {@link messageFileIds}.
+ */
+export function messageFiles(message: Pick<Message, "message_options">): Upload[] {
+    const files = message.message_options?.files ?? [];
+    return files.filter((file): file is Upload => typeof file !== "string");
+}
+
+/** Los identificadores de los ficheros adjuntos de un mensaje, vengan poblados o no. */
+export function messageFileIds(message: Pick<Message, "message_options">): string[] {
+    const files = message.message_options?.files ?? [];
+    return files.map((file) => (typeof file === "string" ? file : file._id));
 }
