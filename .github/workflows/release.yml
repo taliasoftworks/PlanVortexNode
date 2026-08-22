@@ -20,6 +20,9 @@ jobs:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+      # Trusted publishing (OIDC) necesita npm >= 11.5.1, y Node 22 trae npm 10.x. Sin esta
+      # linea el publish falla con un error de autenticacion que no menciona la version.
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
