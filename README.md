@@ -18,7 +18,7 @@ and has **zero runtime dependencies**.
 
 ## Status
 
-**Early. The publishing path works; the inbox and the webhooks do not, yet.**
+**Early. The publishing path and the webhooks work; the inbox does not, yet.**
 
 | Phase | What it adds                                             | State   |
 | ----- | -------------------------------------------------------- | ------- |
@@ -27,7 +27,7 @@ and has **zero runtime dependencies**.
 | 5     | Types generated from the OpenAPI specification           | done    |
 | 6     | Resources: the publishing path                           | done    |
 | 7     | Resources: inbox and the rest                            | pending |
-| 8     | Webhooks                                                 | pending |
+| 8     | Webhooks                                                 | done    |
 | 9     | The account connection flow                              | pending |
 
 ## Publishing
@@ -103,6 +103,79 @@ endpoint that does not exist. One deliberate exception to "generated": every enu
 with the product — `SocialNetwork`, `PublicationState`, `FileFormat` — is **open**. The known values
 autocomplete, and a network added to PlanVortex next month does not break your build.
 
+## Webhooks
+
+PlanVortex `POST`s to your app's `webhook_url` when something happens. **The body is an array of
+changes**, and each one carries `field` telling you what it is.
+
+```ts
+import express from "express";
+import { planvortexWebhooks, isCommentChange, isMessageChange } from "planvortex/webhooks";
+
+const app = express();
+
+app.post(
+    "/webhooks/planvortex",
+    planvortexWebhooks({
+        secret: process.env.PLANVORTEX_CLIENT_SECRET!,
+        onChanges: async (changes) => {
+            for (const change of changes) {
+                if (isCommentChange(change)) await moderate(change.commentObj);
+                if (isMessageChange(change)) await reply(change.messageObj);
+            }
+        },
+    }),
+);
+```
+
+No `express.raw()` is needed in front: if nothing has parsed the body yet, the middleware reads the
+stream itself. It answers 200 when your handler returns, 401 when the signature does not match, 400
+when the body is not what it should be, and 500 when your handler throws.
+
+Outside Express — Hono, Fastify, a Next route handler — use the framework-agnostic function:
+
+```ts
+import { handleWebhookRequest } from "planvortex/webhooks";
+
+const changes = handleWebhookRequest({
+    body: await request.text(),          // the RAW body
+    headers: request.headers,            // a Headers or a plain object
+    secret: process.env.PLANVORTEX_CLIENT_SECRET!,
+});
+```
+
+Both throw `WebhookSignatureError` when the signature is missing or wrong, and `WebhookBodyError`
+when the body is not raw bytes, not JSON, or not an array. If you only want the check,
+`verifyWebhookSignature({payload, signature, secret})` returns a boolean and never throws on a
+malformed signature.
+
+### The events
+
+| `field` | What happened | Where the payload is |
+|---|---|---|
+| `new_account` | An account was connected | — |
+| `change_state_account` | An account changed state: broke, refreshed, disconnected | — |
+| `messages` | A message came in | `messageObj` |
+| `messaging_postbacks` | The contact pressed a button or a quick reply | `messageObj` |
+| `messaging_seen` | The contact read the conversation | `messageObj`, when we have it |
+| `messaging_error` | The network refused a message you sent | `messageObj.message_errors` |
+| `comments` | A comment came in | `commentObj` |
+| `integration_error` | An integration stopped working | `provider`, `error_code` |
+
+`isAccountStateChange`, `isMessageChange`, `isCommentChange` and `isIntegrationErrorChange` narrow
+a change to its own type. Use them rather than a `switch`: the union carries a member for the
+`field`s this version does not know yet — the list grows — and TypeScript cannot rule that one out
+of a `case`.
+
+Two things about the payload that are easy to get wrong. An **integration** change carries neither
+`id_account` nor `social_network`, because an integration hangs off the organization. And
+`messageObj` arrives **populated**: `contact_id`, `from_contact_id` and `message_options.files`
+carry whole objects rather than identifiers, which is what `messageContact`, `messageContactId`,
+`messageDirection` and `messageFiles` are for.
+
+**Meta repeats deliveries**, and PlanVortex does not retry a failed one. Deduplicate on
+`commentObj.external_id`, and if your work is slow, queue it and return.
+
 ## Errors
 
 ```ts
@@ -125,7 +198,7 @@ request, retries 429/502/503/504 and network failures with exponential backoff a
 `Retry-After`, and turns every error body into a typed class. It never retries a domain error, and
 it never repeats a `POST` that reached the server.
 
-## Four things to know before you write any code
+## Five things to know before you write any code
 
 **Classify errors by `code`, never by the HTTP status.** Every domain error travels with HTTP 400 —
 an expired token, a disconnected account, an exhausted plan quota and a text that is too long are
@@ -142,6 +215,11 @@ state; a `try/catch` will not tell you.
 
 **`upload.public_path` expires.** It is a signed URL, not a permanent link: identical within the
 same hour, gone afterwards. Do not store it in your database — ask for the upload again.
+
+**A webhook signature is computed over the raw body.** Not over a re-serialized copy of the parsed
+JSON: the bytes differ and the signature never matches. Either let `planvortexWebhooks()` read the
+stream, or put `express.raw({ type: "application/json" })` in front of that one route. A global
+`express.json()` is what breaks it, and it breaks it silently.
 
 ## Development
 

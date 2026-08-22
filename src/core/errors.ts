@@ -45,7 +45,7 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
  * 502 de un proxy con cuerpo HTML, o el propio constructor quejándose de la configuración.
  *
  * El servidor no emite nunca el 0, así que sirve de centinela sin pisar el catálogo. Cuál de esos
- * casos es se distingue por `family`: `connection`, `http`, `oauth` o `config`.
+ * casos es se distingue por `family`: `connection`, `http`, `oauth`, `config` o `webhook`.
  */
 export const NO_ERROR_CODE = 0;
 
@@ -71,8 +71,8 @@ export interface PlanVortexErrorOptions {
     /** El error original (un `TypeError` de `fetch`, por ejemplo). */
     cause?: unknown;
     /**
-     * Familia, sólo para los errores que NO salen del catálogo: `connection`, `http`, `oauth` y
-     * `config`. Los de dominio la deducen de su `code` y no la pasan nunca.
+     * Familia, sólo para los errores que NO salen del catálogo: `connection`, `http`, `oauth`,
+     * `config` y `webhook`. Los de dominio la deducen de su `code` y no la pasan nunca.
      */
     family?: string;
 }

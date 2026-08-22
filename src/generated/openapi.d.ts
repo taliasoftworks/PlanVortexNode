@@ -2316,8 +2316,14 @@ export interface webhooks {
         get?: never;
         put?: never;
         /**
-         * A comment arrived (notification to your app)
-         * @description PlanVortex `POST`s to the `webhook_url` of your client app when a comment comes in. The body is an **array** of changes, and each one carries `field` telling you what it is.
+         * A change happened (notification to your app)
+         * @description PlanVortex `POST`s to the `webhook_url` of your client app when something happens. **The body is an array of changes**, and each one carries `field` telling you what it is — switch on it and ignore what you do not handle, because the list grows with the product.
+         *
+         *     Two shapes travel in that array. A change on an **account** (`WebhookChange`) always carries `id_account`, `id_organization` and `social_network`. A change on an **integration** (`IntegrationWebhookChange`) carries none of those, because an integration hangs off the organization and not off any account.
+         *
+         *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments` and `integration_error`.
+         *
+         *     ### Comments
          *
          *     `field: "comments"` is the one for this section, and the comment itself travels in **`commentObj`** — a property of its own, never in `messageObj`. That is deliberate: a comment is not a message, it has no contact and it hangs off a publication. A consumer that only understands messages sees `commentObj` as absent and ignores the change, which is exactly what should happen.
          *
@@ -2333,6 +2339,8 @@ export interface webhooks {
          *     - `x-hub-signature-256`: `sha256=<hmac>`
          *
          *     Compute the HMAC over the **raw** request body — not over a re-serialized copy of the parsed JSON — and compare in constant time. Prefer the sha256 header.
+         *
+         *     Delivery is best effort: PlanVortex does not retry a webhook that fails.
          */
         post: operations["onCommentsWebhook"];
         delete?: never;
@@ -2577,7 +2585,7 @@ export interface components {
              *
              *     **The body is an array of changes, not a single object**, and it carries two signature headers computed with this app's secret over the **raw** body: `x-hub-signature` (`sha1=<hex>`) and `x-hub-signature-256` (`sha256=<hex>`). Verify against the bytes you received — parsing the JSON and re-serialising it changes them and the signature will not match.
              *
-             *     The events delivered today are `new_account`, `change_state_account`, `messages`, `comments` and `integration_error`. The payload is documented in the `comments` specification. Delivery is best effort: PlanVortex does not retry a webhook that fails.
+             *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments` and `integration_error`. The payload is documented in the `comments` specification. Delivery is best effort: PlanVortex does not retry a webhook that fails.
              */
             webhook_url?: string;
         };
@@ -2863,6 +2871,21 @@ export interface components {
             /** @description What the network says the total is. On a Google Business listing it is the number of **reviews**, which is not the length of `comments`: your replies travel in the same array as children of the review they answer. */
             total?: number;
         };
+        /**
+         * @description One change in the array PlanVortex posts to your app's `webhook_url`, when an **integration** stopped working: a revoked Google Drive token, a feed that no longer answers, a publication quota that ran out.
+         *
+         *     It carries neither `id_account` nor `social_network`, because an integration hangs off the organization and not off any account — which is exactly why it is a type of its own. A consumer that only understands account changes sees a `field` it does not know and ignores it, which is what should happen.
+         */
+        CommentsIntegrationWebhookChange: {
+            /** @description PlanVortex error code saying what went wrong. Integration codes live in the 2200-2299 range. */
+            error_code: number;
+            /** @enum {string} */
+            field: "integration_error";
+            id_integration: string;
+            id_organization: string;
+            /** @description `google_drive` or `rss` today. **This list grows**: treat it as an open enumeration. */
+            provider: string;
+        };
         /** @description The coarse gates of one network */
         CommentsSocialCapabilities: {
             comments: boolean;
@@ -2872,80 +2895,95 @@ export interface components {
             publications: boolean;
             webhooks: boolean;
         };
-        /** @description One change in the array PlanVortex posts to your app's `webhook_url` */
+        /**
+         * @description One change in the array PlanVortex posts to your app's `webhook_url`, when the change concerns a social **account**.
+         *
+         *     An integration that stopped working has a shape of its own — `IntegrationWebhookChange` — and one delivery can mix both. Switch on `field`, and ignore what you do not handle.
+         */
         CommentsWebhookChange: {
-            /** @description The comment. Present only when `field` is `comments`. */
+            /** @description The comment. Present only when `field` is `comments`, and absent even then if the author deleted a comment we had never seen. */
             commentObj?: components["schemas"]["CommentsComment"];
             /**
-             * @description What kind of change this is. Treat it as an open list and ignore what you do not handle.
+             * @description What kind of change this is. **Treat it as an open list** and ignore what you do not handle: it grows with the product.
+             *
+             *     - `new_account` / `change_state_account`: an account was connected, or its state changed — it stopped working, its token was refreshed, it was disconnected.
+             *     - `messages`: a message came in. It travels in `messageObj`.
+             *     - `messaging_postbacks`: the contact pressed a button or a quick reply. Also in `messageObj`.
+             *     - `messaging_seen`: the contact read the conversation. `messageObj` carries the message they read, when we still have it.
+             *     - `messaging_error`: the network refused a message we sent. The reason is in `messageObj.message_errors`.
+             *     - `comments`: a comment came in. It travels in `commentObj`, never in `messageObj`.
              * @enum {string}
              */
-            field?: "new_account" | "change_state_account" | "comments" | "messages" | "message_reactions" | "messaging_postbacks" | "mentions";
-            id_account?: string;
-            /** @description Only for messaging fields. A comment has no contact. */
+            field: "new_account" | "change_state_account" | "messages" | "messaging_postbacks" | "messaging_seen" | "messaging_error" | "comments";
+            id_account: string;
+            /** @description Only for messaging fields. A comment has no contact: its author is not someone you can write to. */
             id_contact?: string;
-            id_organization?: string;
-            /** @description The message. Present only for messaging fields — a comment never travels in here. */
-            messageObj?: Record<string, never>;
-            /** @description The raw payload the social network sent, passed through untouched */
-            originalChange?: Record<string, never>;
-            social_network?: string;
+            id_organization: string;
+            /**
+             * @description The message. Present for the messaging fields, never for a comment — a comment is not a message and does not travel in here.
+             *
+             *     It arrives **populated**: `contact_id`, `from_contact_id` and `message_options.files` carry whole objects. On `messaging_seen` and `messaging_error` it can be absent, because the message being acknowledged may not be one of ours.
+             */
+            messageObj?: components["schemas"]["Message"];
+            /** @description The raw payload the social network sent, passed through untouched. Absent on the changes PlanVortex raises itself, such as `new_account`. */
+            originalChange?: {
+                [key: string]: unknown;
+            };
+            social_network: components["schemas"]["SocialNetwork"];
         };
-        ContactsContact: {
-            _id?: string;
+        /** @description A person the organization exchanges messages with. The same contact can be reachable on several channels — that is what `social_identifiers` is. */
+        Contact: {
+            _id: string;
             /** Format: date-time */
-            creation_date?: string;
-            extra_data?: components["schemas"]["ContactsContactExtraData"];
-            id_organization?: string;
+            creation_date: string;
+            /** @description The user who created the contact, when it was created from the panel instead of arriving from a network. */
+            creator_keycloak_identifier?: string;
+            extra_data?: components["schemas"]["ContactExtraData"];
+            id_organization: string;
             /**
              * Format: date-time
              * @description Last time the contact's profile was refreshed from the network.
              */
-            last_contact_update?: string;
+            last_contact_update: string;
             name?: string;
             /** @description URL of the contact's avatar on the network. It belongs to the network and it can stop working. */
             profile_image?: string;
-            social_identifiers?: components["schemas"]["ContactsSocialIdentifier"][];
+            social_identifiers: components["schemas"]["SocialIdentifier"][];
         };
+        /**
+         * @description Where a contact can be reached. Every social network that has messaging, plus `email` for a contact created by hand instead of arriving from a network.
+         *
+         *     **This list grows** with the networks: treat it as an open enumeration.
+         * @enum {string}
+         */
+        ContactChannel: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "email";
         /** @description Your own fields on the contact. The address block is known to PlanVortex; the six generic properties are yours to use, and they are what `extra_data` filters on. */
-        ContactsContactExtraData: {
+        ContactExtraData: {
             address?: string;
             boolean_property?: boolean;
             boolean_property2?: boolean;
-            building?: string;
+            building?: string | number;
             city?: string;
             /** @description Longitude and latitude, in that order. */
             coords?: number[];
             country?: string;
             country_code?: string;
-            door?: string;
-            floor?: string;
-            number?: string;
+            door?: string | number;
+            floor?: string | number;
+            number?: string | number;
             number_property?: number;
             number_property2?: number;
             place_id?: string;
             state?: string;
             string_property?: string;
             string_property2?: string;
-            zip_code?: string;
+            zip_code?: string | number;
         };
         ContactsContactInput: {
-            extra_data?: components["schemas"]["ContactsContactExtraData"];
+            extra_data?: components["schemas"]["ContactExtraData"];
             name?: string;
             profile_image?: string;
-            social_identifiers?: components["schemas"]["ContactsSocialIdentifier"][];
-        };
-        /** @description The same person, on one network. */
-        ContactsSocialIdentifier: {
-            _id?: string;
-            /** @description Identifier of the contact on that network. */
-            external_identifier?: string;
-            /**
-             * Format: date-time
-             * @description Last message received from the contact. On WhatsApp it is what opens the 24-hour window in which a free-form message is allowed.
-             */
-            last_send_date?: string;
-            social_network?: components["schemas"]["SocialNetwork"];
+            social_identifiers?: components["schemas"]["SocialIdentifier"][];
         };
         /** @description A connected account that has stopped working: an expired token or a revoked permission. Until it is reconnected it neither publishes nor measures. */
         DashboardAccountWithError: {
@@ -3232,31 +3270,65 @@ export interface components {
              */
             url: string;
         };
-        /** @description The person on the other side. The full resource lives in the contacts specification. */
-        MessagesContact: {
-            _id?: string;
+        /**
+         * @description A message exchanged with a contact.
+         *
+         *     **Careful with the three reference fields.** `contact_id`, `from_contact_id` and `message_options.files` arrive **populated** — the whole object, not the identifier — in the messages list and in the webhook PlanVortex posts to your app, and as plain identifiers everywhere else. The types say `string | object` because both really happen.
+         */
+        Message: {
+            _id: string;
+            /** @description Set when **we** wrote to the contact. Exactly one of `contact_id` and `from_contact_id` is present, and which one tells you the direction of the message. */
+            contact_id?: string | components["schemas"]["Contact"];
             /** Format: date-time */
-            creation_date?: string;
-            id_organization?: string;
-            name?: string;
-            /** @description URL of the contact's avatar on the network. It is the network's URL, and it can expire. */
-            profile_image?: string;
-            /** @description The same person on each network. A contact can be one entry or several. */
-            social_identifiers?: {
-                _id?: string;
-                /** @description Identifier of the contact on that network. */
-                external_identifier?: string;
-                /**
-                 * Format: date-time
-                 * @description Last message received from the contact. It is what opens the 24-hour window on WhatsApp.
-                 */
-                last_send_date?: string;
-                social_network?: components["schemas"]["SocialNetwork"];
+            creation_date: string;
+            /** @description Identifier of this message on the network. */
+            element_external_id?: string;
+            /** @description Set when the **contact** wrote to us. */
+            from_contact_id?: string | components["schemas"]["Contact"];
+            id_account: string;
+            /** @description Identifier on the network of the publication, comment or message this one answers. */
+            in_response_external_id?: string;
+            /** @description Identifier of the PlanVortex message this one answers. */
+            in_response_to?: string;
+            /** @description Why the network refused this message, if it did. Same shape as an API error. Empty when nothing went wrong. */
+            message_errors: components["schemas"]["Error"][];
+            message_options: components["schemas"]["MessageOptions"];
+            message_type: components["schemas"]["MessageType"];
+            read: boolean;
+            /** @description Absent on the messages that carry no text of their own, such as a `messaging_seen` acknowledgement. */
+            text?: string;
+        };
+        /** @description Everything a message can carry besides its text. Which block is required depends on `message_type`. */
+        MessageOptions: {
+            /** @description The uploads attached to the message. **Populated** wherever the message itself is: the messages list and webhook deliveries carry whole uploads, everything else carries their identifiers. Handle both. */
+            files: (string | components["schemas"]["Upload"])[];
+            /** @description Files already hosted somewhere else. Filled in by PlanVortex when a message arrives from the network. */
+            files_urls: {
+                mime_type?: string;
+                url?: string;
             }[];
+            /** @description Meta cards, for `elements_message` and `button_message`. */
+            metaElements?: {
+                [key: string]: unknown;
+            }[];
+            /** @description Meta quick replies, for `quick_reply_message`. */
+            metaQuickReplies?: {
+                [key: string]: unknown;
+            }[];
+            /** @description Payload of a Meta postback. */
+            payload?: string;
+            /** @description Required for `template_message`, as the network's language code. */
+            template_language?: string;
+            /** @description Required for `template_message`. */
+            template_name?: string;
+            /** @description WhatsApp interactive list, for `interactive_message`. It needs at least one section. */
+            whatsappInteractive?: {
+                [key: string]: unknown;
+            };
         };
         /** @description One contact's thread, as it looks in an inbox list. */
         MessagesConversation: {
-            contact?: components["schemas"]["MessagesContact"];
+            contact?: components["schemas"]["Contact"];
             /**
              * Format: date-time
              * @description When the last message of the thread was written, which is what the list is sorted by.
@@ -3281,69 +3353,19 @@ export interface components {
             /** @description Conversations in the range. Only when `group_by` was not sent. */
             total?: number;
         };
-        MessagesMessage: {
-            _id?: string;
-            /** @description Set when **we** wrote to the contact. Exactly one of `contact_id` and `from_contact_id` is present, and which one tells you the direction of the message. */
-            contact_id?: string;
-            /** Format: date-time */
-            creation_date?: string;
-            /** @description Identifier of this message on the network. */
-            element_external_id?: string;
-            /** @description Set when the **contact** wrote to us. */
-            from_contact_id?: string;
-            id_account?: string;
-            /** @description Identifier on the network of the publication, comment or message this one answers. */
-            in_response_external_id?: string;
-            /** @description Identifier of the PlanVortex message this one answers. */
-            in_response_to?: string;
-            /** @description Why the network refused this message, if it did. Same shape as an API error. */
-            message_errors?: components["schemas"]["Error"][];
-            message_options?: components["schemas"]["MessagesMessageOptions"];
-            message_type?: components["schemas"]["MessagesMessageType"];
-            read?: boolean;
-            text?: string;
-        };
         MessagesMessageInput: {
             /** @description Identifier of the publication or comment being answered. Required by `comment_message` and `publication_message`. */
             in_response_external_id?: string;
-            message_options?: components["schemas"]["MessagesMessageOptions"];
-            message_type: components["schemas"]["MessagesMessageType"];
+            message_options?: components["schemas"]["MessageOptions"];
+            message_type: components["schemas"]["MessageType"];
             /** @description Required for the text-based types. Validated against `characters` in `GET /social_limits`. */
             text?: string;
-        };
-        /** @description Everything a message can carry besides its text. Which block is required depends on `message_type`. */
-        MessagesMessageOptions: {
-            /** @description Identifiers of uploads of this organization. */
-            files?: string[];
-            /** @description Files already hosted somewhere else. Filled in by PlanVortex when a message arrives from the network. */
-            files_urls?: {
-                mime_type?: string;
-                url?: string;
-            }[];
-            /** @description Meta cards, for `elements_message` and `button_message`. */
-            metaElements?: {
-                [key: string]: unknown;
-            }[];
-            /** @description Meta quick replies, for `quick_reply_message`. */
-            metaQuickReplies?: {
-                [key: string]: unknown;
-            }[];
-            /** @description Payload of a Meta postback. */
-            payload?: string;
-            /** @description Required for `template_message`, as the network's language code. */
-            template_language?: string;
-            /** @description Required for `template_message`. */
-            template_name?: string;
-            /** @description WhatsApp interactive list, for `interactive_message`. It needs at least one section. */
-            whatsappInteractive?: {
-                [key: string]: unknown;
-            };
         };
         /**
          * @description What kind of message this is. `simple_message` and `file_message` work everywhere; the rest are network-specific shapes.
          * @enum {string}
          */
-        MessagesMessageType: "simple_message" | "file_message" | "comment_message" | "publication_message" | "quick_reply_message" | "button_message" | "elements_message" | "postback_message" | "template_message" | "interactive_message";
+        MessageType: "simple_message" | "file_message" | "comment_message" | "publication_message" | "quick_reply_message" | "button_message" | "elements_message" | "postback_message" | "template_message" | "interactive_message";
         /** @description The container of accounts, publications and files. Organizations can nest. */
         Organization: {
             /** @example 66d04a6a427f4c43b9d97f54 */
@@ -3816,6 +3838,18 @@ export interface components {
              * @description When the credentials were last validated against Discord.
              */
             verified_date?: string;
+        };
+        /** @description The same person, on one channel. */
+        SocialIdentifier: {
+            _id: string;
+            /** @description Identifier of the contact on that channel. */
+            external_identifier?: string;
+            /**
+             * Format: date-time
+             * @description Last message received from the contact. On WhatsApp it is what opens the 24-hour window in which a free-form message is allowed.
+             */
+            last_send_date?: string;
+            social_network: components["schemas"]["ContactChannel"];
         };
         /**
          * @description A social network supported by PlanVortex.
@@ -6570,7 +6604,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        messages?: components["schemas"]["MessagesMessage"][];
+                        messages?: components["schemas"]["Message"][];
                         total?: number;
                     };
                 };
@@ -6605,7 +6639,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        message?: components["schemas"]["MessagesMessage"];
+                        message?: components["schemas"]["Message"];
                     };
                 };
             };
@@ -7523,7 +7557,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        contacts?: components["schemas"]["ContactsContact"][];
+                        contacts?: components["schemas"]["Contact"][];
                         total?: number;
                     };
                 };
@@ -7554,7 +7588,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        contact?: components["schemas"]["ContactsContact"];
+                        contact?: components["schemas"]["Contact"];
                     };
                 };
             };
@@ -7606,7 +7640,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        contact?: components["schemas"]["ContactsContact"];
+                        contact?: components["schemas"]["Contact"];
                     };
                 };
             };
@@ -10215,7 +10249,7 @@ export interface operations {
                  *       }
                  *     ]
                  */
-                "application/json": components["schemas"]["CommentsWebhookChange"][];
+                "application/json": (components["schemas"]["CommentsWebhookChange"] | components["schemas"]["CommentsIntegrationWebhookChange"])[];
             };
         };
         responses: {
