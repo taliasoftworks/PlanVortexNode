@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # Trusted publishing (OIDC): npm verifica que el paquete sale de ESTE repo y de este
+      # workflow. No hay NPM_TOKEN en los secretos de GitHub, que es justo el secreto que se
+      # filtra en cuanto alguien tiene acceso de escritura.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:exports
+      # `--provenance` firma de donde sale el tarball y npm lo enseña en la ficha del paquete.
+      - run: npm publish --provenance --access public

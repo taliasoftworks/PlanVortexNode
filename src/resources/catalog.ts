@@ -1,0 +1,145 @@
+/**
+ * El catálogo: qué redes hay, qué sabe hacer cada una y contra qué límites se valida.
+ *
+ * POR QUÉ SE CACHEA: son constantes del despliegue. No dependen del cliente, no dependen de la
+ * organización y no cambian entre dos llamadas — cambian cuando se despliega el servidor. Un
+ * compositor que valide el texto mientras se escribe pediría `/social_limits` en cada tecla; con la
+ * caché lo pide una vez por instancia de {@link PlanVortex}.
+ *
+ * POR QUÉ SE PIDEN Y NO SE ESCRIBEN AQUÍ: es la regla de la casa — quien valida el límite es quien
+ * lo anuncia. El panel tenía su propia tabla y divergió: contaba LinkedIn hasta 3.000 mientras el
+ * servidor lo tumbaba a los 1.300, así que el usuario escribía un texto que el contador daba por
+ * bueno y la API rechazaba. Una copia dentro de esta librería sería el mismo error un piso más
+ * abajo, y encima repartido por npm.
+ *
+ * LA CACHÉ ES POR INSTANCIA Y NO CADUCA. Un proceso de días que quiera enterarse de una red nueva
+ * llama a {@link CatalogResource.clearCache}; un proceso normal se muere antes de que importe.
+ */
+import { Resource } from "./base.js";
+import type { RequestOptions } from "./base.js";
+import type {
+    AspectRatiosByNetwork,
+    CommentActions,
+    PublicationLimits,
+    SocialCapabilities,
+    SocialLimits,
+    SocialNetwork,
+} from "../types.js";
+
+export class CatalogResource extends Resource {
+    private readonly cache = new Map<string, Promise<unknown>>();
+
+    /**
+     * Las redes soportadas.
+     *
+     * **La lista crece varias veces al año.** No la copies a una constante tuya: pídela.
+     */
+    async socialNetworks(options?: RequestOptions): Promise<SocialNetwork[]> {
+        return this.cached("/social_networks", () =>
+            this.httpGet<SocialNetwork[]>("/social_networks", undefined, options),
+        );
+    }
+
+    /** Las redes que aceptan publicaciones. Ni WhatsApp ni Google Business están. */
+    async allowedSocialPublications(options?: RequestOptions): Promise<SocialNetwork[]> {
+        return this.cached("/allowed_social_publications", () =>
+            this.httpGet<SocialNetwork[]>("/allowed_social_publications", undefined, options),
+        );
+    }
+
+    /**
+     * Las redes con conversaciones.
+     *
+     * Va en `POST` y no en `GET`, que es raro y es así: es la ruta que hay. No manda cuerpo.
+     */
+    async allowedSocialMessages(options?: RequestOptions): Promise<SocialNetwork[]> {
+        return this.cached("/allowed_social_messages", () =>
+            this.httpPost<SocialNetwork[]>("/allowed_social_messages", undefined, options),
+        );
+    }
+
+    /**
+     * La matriz red → qué sabe hacer: publicar, mensajes, productos, webhooks, menú persistente y
+     * comentarios.
+     *
+     * Es lo que evita ofrecer una cuenta en una pantalla que su red no soporta — WhatsApp en el
+     * compositor, LinkedIn en el chat.
+     */
+    async socialCapabilities(options?: RequestOptions): Promise<Record<string, SocialCapabilities>> {
+        return this.cached("/social_capabilities", () =>
+            this.httpGet<Record<string, SocialCapabilities>>("/social_capabilities", undefined, options),
+        );
+    }
+
+    /**
+     * La matriz red → qué se puede hacer con un comentario: responder, ocultar, borrar el propio y
+     * borrar el de otro.
+     *
+     * Va **aparte** de {@link socialCapabilities} porque aquélla es `{[capacidad]: boolean}` y esto
+     * es un objeto por red: meterlo dentro rompería su forma. Que la red tenga comentarios no dice
+     * lo suficiente — Instagram, X y Bluesky no dejan borrar el de otro, LinkedIn no tiene
+     * "ocultar", y Google Business sólo deja borrar **nuestra propia respuesta**.
+     */
+    async socialCommentActions(options?: RequestOptions): Promise<Record<string, CommentActions>> {
+        return this.cached("/social_comment_actions", () =>
+            this.httpGet<Record<string, CommentActions>>("/social_comment_actions", undefined, options),
+        );
+    }
+
+    /**
+     * Los topes de cada red, por los que el servidor valida.
+     *
+     * Bluesky lleva **dos** cuentas del mismo texto y en unidades distintas: 300 grafemas en
+     * `characters` y 3.000 bytes en `max_post_bytes`. `.length` miente en las dos direcciones —un
+     * emoji de familia es UN grafema y 25 bytes—, así que un contador que use `.length` da por
+     * bueno lo que la API rechaza y al revés.
+     */
+    async socialLimits(options?: RequestOptions): Promise<SocialLimits> {
+        return this.cached("/social_limits", () =>
+            this.httpGet<SocialLimits>("/social_limits", undefined, options),
+        );
+    }
+
+    /** Los topes de una publicación que no dependen de la red: hoy, cuántos reintentos manuales admite. */
+    async publicationLimits(options?: RequestOptions): Promise<PublicationLimits> {
+        return this.cached("/publication_limits", () =>
+            this.httpGet<PublicationLimits>("/publication_limits", undefined, options),
+        );
+    }
+
+    /**
+     * Los recortes que acepta cada red.
+     *
+     * Se indexa por red **y por formato** (`facebook`, `facebook_reels`, `facebook_stories`), así
+     * que no todas las claves son una red. `values` y `text` son arrays paralelos: mismo índice,
+     * mismo recorte.
+     */
+    async allowedAspectRatios(options?: RequestOptions): Promise<AspectRatiosByNetwork> {
+        return this.cached("/allowed_aspect_ratios", () =>
+            this.httpGet<AspectRatiosByNetwork>("/allowed_aspect_ratios", undefined, options),
+        );
+    }
+
+    /** Tira la caché. Para un proceso largo que quiera enterarse de una red nueva sin reiniciar. */
+    clearCache(): void {
+        this.cache.clear();
+    }
+
+    /**
+     * Guarda la PROMESA, no el resultado: dos llamadas a la vez comparten una petición en vez de
+     * lanzar dos. Si falla, la entrada se retira para que el siguiente intento vuelva a pedirla —
+     * cachear un fallo de red deja la instancia rota para siempre.
+     */
+    private cached<T>(key: string, fetch: () => Promise<T>): Promise<T> {
+        const hit = this.cache.get(key);
+        if (hit) {
+            return hit as Promise<T>;
+        }
+        const pending = fetch().catch((error: unknown) => {
+            this.cache.delete(key);
+            throw error;
+        });
+        this.cache.set(key, pending);
+        return pending;
+    }
+}

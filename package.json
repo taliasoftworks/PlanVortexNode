@@ -1,0 +1,99 @@
+{
+  "name": "planvortex",
+  "version": "0.0.1",
+  "description": "Official Node.js client for the PlanVortex API: connect social accounts, schedule and publish posts, read comments and messages, and verify webhooks.",
+  "keywords": [
+    "planvortex",
+    "social-media",
+    "scheduling",
+    "publishing",
+    "facebook",
+    "instagram",
+    "linkedin",
+    "tiktok",
+    "twitter",
+    "whatsapp",
+    "youtube",
+    "bluesky",
+    "discord",
+    "api-client"
+  ],
+  "homepage": "https://planvortex.com/developers",
+  "bugs": {
+    "url": "https://github.com/taliasoftworks/PlanVortexNode/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taliasoftworks/PlanVortexNode.git"
+  },
+  "license": "MIT",
+  "author": "Talia Softworks",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./webhooks": {
+      "import": {
+        "types": "./dist/webhooks/index.d.ts",
+        "default": "./dist/webhooks/index.js"
+      },
+      "require": {
+        "types": "./dist/webhooks/index.d.cts",
+        "default": "./dist/webhooks/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "docs": "typedoc",
+    "generate": "tsx scripts/generate-types.ts",
+    "check:exports": "publint && attw --pack . --profile node16",
+    "prepublishOnly": "npm run build && npm run check:exports"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^22.13.5",
+    "@typescript-eslint/eslint-plugin": "^8.24.1",
+    "@typescript-eslint/parser": "^8.24.1",
+    "@vitest/coverage-v8": "^3.0.6",
+    "eslint": "^9.21.0",
+    "globals": "^15.15.0",
+    "msw": "^2.7.3",
+    "openapi-typescript": "^7.6.1",
+    "prettier": "^3.5.2",
+    "publint": "^0.3.24",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typedoc": "^0.27.9",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.6"
+  }
+}
