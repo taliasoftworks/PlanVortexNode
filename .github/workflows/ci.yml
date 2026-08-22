@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 18 murio en abril de 2025. 20 es el minimo que declara `engines`.
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  exports:
+    # `publint` y `arethetypeswrong` son los dos que detectan un `exports` mal montado ANTES de
+    # que lo detecte un usuario con un `require()` que no resuelve los tipos.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:exports
+
+  types-in-sync:
+    # Los tipos se generan del OpenAPI y se COMMITEAN. Si alguien toca el spec y no regenera, el
+    # paquete publica tipos que no son los de la API.
+    #
+    # Aqui no esta PlanVortexHome, asi que `npm run generate` rehace los tipos a partir del paquete
+    # commiteado (`openapi/planvortex.openapi.json`) y lo que se comprueba es que se correspondan.
+    # Que el paquete corresponda al spec lo comprueba `openapi_freshness.test.ts` en la maquina de
+    # desarrollo, donde los tres repositorios viven juntos.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run generate
+      - run: git diff --exit-code src/generated openapi
