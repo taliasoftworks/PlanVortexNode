@@ -8,6 +8,18 @@ All notable changes to this package are documented here. The format follows
 
 ### Added
 
+- The account connection flow: `pv.organizations.createConnectToken(orgId, {social_network,
+  redirect_uri})` mints the one-hour token a person needs to connect a social account, and
+  `pv.asTemporalToken(token).accounts` exposes `connectLinks()`, `connect()` and `enable()`. App
+  credentials are refused by those three (error 519) — that is the whole point of the flow, and the
+  reason this is not something an app can do on its own.
+- `connect()` turns the `errorCode` that `account-connect` returns **inside an HTTP 200** into the
+  thrown error it would have been anywhere else, so the failure cannot be mistaken for an
+  authorization that produced no accounts.
+- `ConnectToken`, `ConnectLink`, `ConnectResult`, `EnableResult`, `ConnectTokenOptions`,
+  `ConnectLinksOptions` and `ConnectCallbackParams` types.
+- `examples/connect-flow.ts`: a dependency-free server that issues the token, redirects the user,
+  welcomes them back and lists the account they connected.
 - Package skeleton: dual ESM + CJS build with both sets of types, `vitest`, `eslint`, `prettier`,
   `typedoc`, and CI on Node 20, 22 and 24 with `publint` and `arethetypeswrong`.
 - `PLANVORTEX_API_URL`, `VERSION` and `PLANVORTEX_ERROR_RANGES` from the main entry point.

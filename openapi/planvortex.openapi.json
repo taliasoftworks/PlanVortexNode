@@ -125,7 +125,7 @@
             }
           },
           "400": {
-            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `1101` | Invalid organization |\n| `523` | Invalid application |",
+            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `1101` | Invalid organization |\n| `523` | Invalid application |\n| `532` | `redirect_uri` is not one of the fronts registered on the server |",
             "content": {
               "application/json": {
                 "schema": {
@@ -164,7 +164,7 @@
           {
             "name": "redirect_uri",
             "in": "query",
-            "description": "Where the user is sent back after authorizing. It has to be one of the app's `redirect_urls`.",
+            "description": "Which PlanVortex front the network sends the user back to, for a white-labelled deployment. It has to be one of the fronts the server has registered (`FRONT_URL_REDIRECT`) or the call answers error 532 — it is **not** your app's `redirect_urls`, and it cannot be a URL of yours: the networks only accept redirect URIs registered in their own app settings. Where your user goes once they have finished is the `redirect_uri` of `GET /organizations/{id_organization}/temporal_connect_token`.",
             "required": false,
             "schema": {
               "type": "string"
@@ -6213,7 +6213,7 @@
           "orgnaizations"
         ],
         "summary": "Issue a temporal connect token for an end user",
-        "description": "Returns a URL that lets **a person** connect a social account to this organization, without that person having a PlanVortex account and without your `client_secret` ever leaving your server.\n\nIt exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:\n\n1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused.\n2. You send your end user to the `url` that comes back, by redirect or in an iframe.\n3. With that token the browser completes `connect_links` and `account-connect`.\n\nThe token lasts **one hour**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.\n\nIf you send `redirect_uri` it has to be one of the app's `redirect_urls`, or the call answers error 532.",
+        "description": "Returns a URL that lets **a person** connect a social account to this organization, without that person having a PlanVortex account and without your `client_secret` ever leaving your server.\n\nIt exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:\n\n1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused.\n2. You send your end user to the `url` that comes back, by redirect or in an iframe. The bare\n   `token` comes back too, so a server-side client can authenticate with it directly instead of\n   parsing it out of that URL.\n3. With that token the browser completes `connect_links` and `account-connect`.\n\nThe token lasts **one hour**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.\n\nIf you send `redirect_uri` it has to be one of the app's `redirect_urls`, or the call answers error 532.",
         "operationId": "createTemporalConnectToken",
         "x-planvortex-identity": [
           "current_app"
@@ -6249,7 +6249,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The URL to send the user to. **The answer is a URL with the token inside it**, not the bare token.",
+            "description": "The URL to send the user to, the bare token, and when it expires.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6257,18 +6257,29 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "Ready to redirect to. The token travels in its `token` query parameter and expires in one hour."
+                      "description": "Ready to redirect to. Carries the token in its `token` query parameter, and the network in `social_network` when one was asked for."
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "The same token, on its own. This is what you pass to a client that authenticates with a temporal token; do not parse it out of `url`."
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the token stops working. One hour after it was issued."
                     }
                   },
                   "required": [
-                    "url"
+                    "url",
+                    "token",
+                    "expires_at"
                   ]
                 }
               }
             }
           },
           "400": {
-            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `519` | This endpoint needs app credentials |\n| `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |\n| `1101` | Invalid organization |",
+            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `514` | This endpoint needs app credentials: a user token cannot issue one |\n| `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |\n| `1101` | Invalid organization |",
             "content": {
               "application/json": {
                 "schema": {

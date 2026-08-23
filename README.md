@@ -18,7 +18,7 @@ and has **zero runtime dependencies**.
 
 ## Status
 
-**Early. The publishing path and the webhooks work; the inbox does not, yet.**
+**Early. Connecting accounts, the publishing path and the webhooks work; the inbox does not, yet.**
 
 | Phase | What it adds                                             | State   |
 | ----- | -------------------------------------------------------- | ------- |
@@ -28,7 +28,7 @@ and has **zero runtime dependencies**.
 | 6     | Resources: the publishing path                           | done    |
 | 7     | Resources: inbox and the rest                            | pending |
 | 8     | Webhooks                                                 | done    |
-| 9     | The account connection flow                              | pending |
+| 9     | The account connection flow                              | done    |
 
 ## Publishing
 
@@ -80,8 +80,8 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages` — all cached in memory per client |
 | `pv.clients`       | `list`, `iterate`, `get`, `update`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                                                                      |
-| `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`                                                                                                                           |
-| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `getPersistentMenu`, `setPersistentMenu`                                                                                                    |
+| `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`                                                                                                     |
+| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                                               |
 | `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                   |
 | `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                                              |
 
@@ -102,6 +102,46 @@ These types are generated from the same OpenAPI specification the
 endpoint that does not exist. One deliberate exception to "generated": every enumeration that grows
 with the product — `SocialNetwork`, `PublicationState`, `FileFormat` — is **open**. The known values
 autocomplete, and a network added to PlanVortex next month does not break your build.
+
+## Connecting a social account
+
+**An app cannot connect one.** Authorizing Instagram is an OAuth flow with a person in front of it,
+so app credentials are refused (error 519) by every endpoint of this flow. What an app does instead
+is mint a one-hour token, hand it to its user, and wait for them to come back. Your `client_secret`
+never leaves your server.
+
+```ts
+// On your server, when your user asks to connect a social account:
+const connect = await pv.organizations.createConnectToken(orgId, {
+    // Must be one of the app's registered redirect_urls, or you get error 532.
+    redirect_uri: "https://your-app.example/done",
+});
+
+response.redirect(connect.url); // PlanVortex takes over, and returns them to your redirect_uri
+```
+
+`connect.url` is the hosted path, and the one you want: PlanVortex asks which network, runs the
+OAuth, and shows the person which accounts to enable. `connect.token` is the same credential on its
+own, for when you would rather render the picker yourself:
+
+```ts
+const guest = pv.asTemporalToken(connect.token);
+const links = await guest.accounts.connectLinks(orgId); // one authorization URL per network
+```
+
+Three things that surprise everyone:
+
+- **A network that cannot be connected right now simply does not appear** in `connectLinks()`. That
+  is an answer, not a failure — Discord in an organization that has not saved its own bot
+  credentials, for instance.
+- **The network sends the user back to PlanVortex, not to you.** Its `redirect_uri` has to be
+  registered in the network's own app settings, so it can never be a URL of yours. Where _your_ user
+  ends up afterwards is the `redirect_uri` you passed to `createConnectToken`.
+- **A connected account is not an enabled account.** One authorization can produce several — a
+  Facebook user with four pages — and none of them takes a plan slot or publishes until
+  `accounts.enable()` is called on it. That is also the call that answers 706 when the plan is full.
+
+A complete, runnable version is in [examples/connect-flow.ts](examples/connect-flow.ts).
 
 ## Webhooks
 
