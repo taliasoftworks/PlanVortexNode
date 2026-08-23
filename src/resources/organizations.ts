@@ -10,7 +10,7 @@ import { Resource, requireId } from "./base.js";
 import type { RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
-import type { Organization, Paginated, PlanData } from "../types.js";
+import type { ConnectToken, Organization, Paginated, PlanData, SocialNetwork } from "../types.js";
 import type { OrganizationInput } from "./clients.js";
 
 export interface OrganizationOptions extends RequestOptions {
@@ -25,6 +25,19 @@ export interface ChildOrganizationListOptions extends OrganizationOptions, PageO
 
 /** Lo que se puede repartir a una organización hija. Todo son números del plan del padre. */
 export type OrganizationPlanInput = Partial<PlanData>;
+
+export interface ConnectTokenOptions extends RequestOptions {
+    /**
+     * La red que la persona va a conectar. Viaja dentro de la `url` para que el panel no vuelva a
+     * preguntarla. Sin esto, el usuario elige red al llegar.
+     */
+    social_network?: SocialNetwork | undefined;
+    /**
+     * A dónde vuelve el usuario cuando termina. Tiene que ser uno de los `redirect_urls`
+     * registrados en la app, o la llamada contesta el error 532.
+     */
+    redirect_uri?: string | undefined;
+}
 
 export class OrganizationsResource extends Resource {
     /** La ficha de una organización. */
@@ -133,5 +146,34 @@ export class OrganizationsResource extends Resource {
     ): Promise<{ actual_use: PlanData | undefined; actual_asigned: PlanData | undefined }> {
         const organization = await this.get(idOrganization, { ...options, getUse: true });
         return { actual_use: organization.actual_use, actual_asigned: organization.actual_asigned };
+    }
+
+    /**
+     * Emite el token temporal con el que **una persona** conecta una cuenta social a esta
+     * organización. Es la única forma que tiene una app de que se le conecte una cuenta.
+     *
+     * Y es el reverso exacto del resto del flujo: éste es el endpoint que **exige credenciales de
+     * app** —con un token de usuario contesta 514—, mientras que los tres que vienen después
+     * (`accounts.connectLinks`, `accounts.connect`, `accounts.enable`) las rechazan con un 519.
+     *
+     * Vuelven las dos formas del mismo credencial, y las dos sirven:
+     *
+     *  - **`url`** — el camino alojado. Se redirige al usuario ahí y PlanVortex se encarga de la
+     *    elección de red, del OAuth y de la pantalla donde elige qué cuentas dar de alta. Es lo que
+     *    hace el ejemplo `examples/connect-flow`, y lo que casi todo el mundo quiere.
+     *  - **`token`** — el credencial suelto, para `pv.asTemporalToken(token)` cuando la interfaz la
+     *    pone el integrador.
+     *
+     * Caduca en una hora y **sólo vale para esta organización**: usarlo contra otra contesta 1101.
+     */
+    async createConnectToken(
+        idOrganization: string,
+        options: ConnectTokenOptions = {},
+    ): Promise<ConnectToken> {
+        return this.httpGet<ConnectToken>(
+            `/organizations/${requireId(idOrganization, "idOrganization")}/temporal_connect_token`,
+            { social_network: options.social_network, redirect_uri: options.redirect_uri },
+            options,
+        );
     }
 }

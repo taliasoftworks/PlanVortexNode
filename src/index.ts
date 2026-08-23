@@ -17,8 +17,9 @@
  * ```
  *
  * De la fase 4 está el núcleo —transporte, autenticación y errores—, de la 5 los tipos generados del
- * OpenAPI público, y de la 6 el camino de publicar entero: `pv.catalog`, `pv.clients`,
- * `pv.organizations`, `pv.accounts`, `pv.uploads` y `pv.publications`. El resto llega en la fase 7.
+ * OpenAPI público, de la 6 el camino de publicar entero —`pv.catalog`, `pv.clients`,
+ * `pv.organizations`, `pv.accounts`, `pv.uploads` y `pv.publications`—, de la 8 los webhooks y de la
+ * 9 el flujo de conexión de cuentas. El resto de recursos llega en la fase 7.
  */
 
 export { PLANVORTEX_API_URL, VERSION } from "./version.js";
@@ -33,10 +34,17 @@ export { guessContentType } from "./core/files.js";
 export type { FileInput, FileSource } from "./core/files.js";
 
 export type { RequestOptions } from "./resources/base.js";
-export type { AccountCapability, AccountListOptions, AccountMetricsOptions } from "./resources/accounts.js";
+export type {
+    AccountCapability,
+    AccountListOptions,
+    AccountMetricsOptions,
+    ConnectCallbackParams,
+    ConnectLinksOptions,
+} from "./resources/accounts.js";
 export type { ClientListOptions, OrganizationInput, OrganizationListOptions } from "./resources/clients.js";
 export type {
     ChildOrganizationListOptions,
+    ConnectTokenOptions,
     OrganizationOptions,
     OrganizationPlanInput,
 } from "./resources/organizations.js";
@@ -146,8 +154,12 @@ export type {
     CommentActions,
     CommentAuthor,
     CommentNetwork,
+    ConnectLink,
+    ConnectResult,
+    ConnectToken,
     Contact,
     Conversation,
+    EnableResult,
     EngagementBase,
     FileFormat,
     FileProperties,

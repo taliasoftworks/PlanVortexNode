@@ -1991,7 +1991,9 @@ export interface paths {
          *     It exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:
          *
          *     1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused.
-         *     2. You send your end user to the `url` that comes back, by redirect or in an iframe.
+         *     2. You send your end user to the `url` that comes back, by redirect or in an iframe. The bare
+         *        `token` comes back too, so a server-side client can authenticate with it directly instead of
+         *        parsing it out of that URL.
          *     3. With that token the browser completes `connect_links` and `account-connect`.
          *
          *     The token lasts **one hour**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.
@@ -7475,7 +7477,7 @@ export interface operations {
     getConnectLinks: {
         parameters: {
             query?: {
-                /** @description Where the user is sent back after authorizing. It has to be one of the app's `redirect_urls`. */
+                /** @description Which PlanVortex front the network sends the user back to, for a white-labelled deployment. It has to be one of the fronts the server has registered (`FRONT_URL_REDIRECT`) or the call answers error 532 — it is **not** your app's `redirect_urls`, and it cannot be a URL of yours: the networks only accept redirect URIs registered in their own app settings. Where your user goes once they have finished is the `redirect_uri` of `GET /organizations/{id_organization}/temporal_connect_token`. */
                 redirect_uri?: string;
                 /** @description Only these networks. Repeat the parameter for several. Omit it and every connectable network comes back. */
                 social_network?: components["schemas"]["SocialNetwork"][];
@@ -7505,6 +7507,7 @@ export interface operations {
              *     | --- | --- |
              *     | `1101` | Invalid organization |
              *     | `523` | Invalid application |
+             *     | `532` | `redirect_uri` is not one of the fronts registered on the server |
              */
             400: {
                 headers: {
@@ -9500,14 +9503,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The URL to send the user to. **The answer is a URL with the token inside it**, not the bare token. */
+            /** @description The URL to send the user to, the bare token, and when it expires. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        /** @description Ready to redirect to. The token travels in its `token` query parameter and expires in one hour. */
+                        /**
+                         * Format: date-time
+                         * @description When the token stops working. One hour after it was issued.
+                         */
+                        expires_at: string;
+                        /** @description The same token, on its own. This is what you pass to a client that authenticates with a temporal token; do not parse it out of `url`. */
+                        token: string;
+                        /** @description Ready to redirect to. Carries the token in its `token` query parameter, and the network in `social_network` when one was asked for. */
                         url: string;
                     };
                 };
@@ -9517,7 +9527,7 @@ export interface operations {
              *
              *     | Code | Meaning |
              *     | --- | --- |
-             *     | `519` | This endpoint needs app credentials |
+             *     | `514` | This endpoint needs app credentials: a user token cannot issue one |
              *     | `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |
              *     | `1101` | Invalid organization |
              */

@@ -21,7 +21,7 @@
  * arreglan en el spec —en PlanVortexHome—, nunca aqui, porque si este fichero declarase
  * obligatorio algo que el spec da por opcional habria dos verdades y solo una estaria publicada.
  */
-import type { components } from "./generated/openapi.js";
+import type { components, operations } from "./generated/openapi.js";
 
 /** Escotilla de salida: los tipos generados en crudo, por si hace falta uno que no este aqui. */
 export type {
@@ -32,6 +32,7 @@ export type {
 } from "./generated/openapi.js";
 
 type Schemas = components["schemas"];
+type Operations = operations;
 
 /**
  * Una enumeracion ABIERTA: autocompleta los valores conocidos y admite uno nuevo sin romper.
@@ -229,6 +230,50 @@ export type AccountMetricRow = AccountMetrics["stats"][number];
 
 /** El menu fijo del chat, en el formato de Meta. Solo lo tienen las redes con mensajeria. */
 export type PersistentMenu = Schemas["AccountsPersistentMenu"];
+
+// ---------------------------------------------------------------------------------------------
+// Conexion de cuentas
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * El token temporal con el que UNA PERSONA conecta una cuenta social, y la URL a la que mandarla.
+ *
+ * Las dos cosas valen: `url` es el camino alojado —se redirige al usuario y PlanVortex se encarga
+ * de todo—, y `token` es el mismo credencial suelto, para pasarselo a `pv.asTemporalToken(token)`
+ * y conducir el flujo desde el front propio. Caduca a la hora (`expires_at`) y sirve para UNA
+ * organizacion.
+ */
+export type ConnectToken =
+    Operations["createTemporalConnectToken"]["responses"][200]["content"]["application/json"];
+
+/**
+ * El enlace de autorizacion de UNA red. Se manda al usuario ahi y la red lo devuelve al panel de
+ * PlanVortex, que es quien completa la conexion.
+ */
+export type ConnectLink = Schemas["AccountsSocialLinksList"]["links"][number];
+
+/**
+ * Lo que dejo una autorizacion: las cuentas que se pueden dar de alta.
+ *
+ * **Todavia no cuentan para el plan**: hasta que no se llama a `accounts.enable()` no ocupan plaza
+ * ni publican. Una sola autorizacion puede dejar varias (un usuario de Facebook con cuatro paginas
+ * son cuatro), y por eso hay un paso de eleccion en medio.
+ *
+ * No lleva `errorCode`: el endpoint contesta 200 con el error dentro y la libreria lo convierte en
+ * la excepcion que le toca (§ `AccountsResource.connect`).
+ */
+export interface ConnectResult {
+    /** Las cuentas conectadas, aun sin habilitar. Vacio si la autorizacion no dejo nada utilizable. */
+    accounts: Account[];
+    /** A donde mandar al usuario despues, si el token temporal llevaba `redirect_uri`. */
+    redirect_uri?: string;
+}
+
+/** Lo que devuelve habilitar una cuenta. Un fallo no llega aqui: se lanza. */
+export interface EnableResult {
+    /** A donde mandar al usuario despues, si el token temporal llevaba `redirect_uri`. */
+    redirect_uri?: string;
+}
 
 /**
  * Un fichero de la biblioteca de la organizacion.
