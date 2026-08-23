@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/taliasoftworks/PlanVortexNode/main/assets/logo-horizontal-dark.png">
+  <img src="https://raw.githubusercontent.com/taliasoftworks/PlanVortexNode/main/assets/logo-horizontal.png" alt="PlanVortex" width="300">
+</picture>
+
 # planvortex
 
 Official Node.js client for the [PlanVortex](https://planvortex.com) API: connect social accounts,
