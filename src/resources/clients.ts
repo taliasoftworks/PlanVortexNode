@@ -13,7 +13,7 @@ import { Resource, requireId } from "./base.js";
 import type { RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
-import type { Client, Organization, Paginated } from "../types.js";
+import type { AiSettings, Client, ClientWithOrganizations, Organization, Paginated } from "../types.js";
 
 export interface ClientListOptions extends PageOptions {
     /** Trae también `actual_use` y `actual_asigned`. Cuesta una agregación: no lo pidas por costumbre. */
@@ -111,6 +111,40 @@ export class ClientsResource extends Resource {
             body,
             options,
         );
+    }
+
+    /**
+     * Configura los proveedores de IA del cliente (BYOK), ámbito por ámbito.
+     *
+     * Un ámbito puesto a `null` BORRA su configuración y devuelve ese ámbito a los créditos de
+     * PlanVortex; con proveedor propio, generar no cuesta créditos porque el cliente paga a su
+     * proveedor. `orchestrator` y `text` exigen un proveedor de texto e `image` uno de imagen.
+     *
+     * **Se manda la clave y no vuelve nunca**: la respuesta es el cliente, sin secretos.
+     */
+    async updateAiSettings(
+        idClient: string,
+        body: AiSettings,
+        options: RequestOptions = {},
+    ): Promise<Client> {
+        return this.putOne<Client>(
+            `/clients/${requireId(idClient, "idClient")}/ai-settings`,
+            "client",
+            body,
+            options,
+        );
+    }
+
+    /**
+     * Los clientes que puede ver quien llama, **con sus organizaciones raíz dentro**, en una sola
+     * llamada.
+     *
+     * Es el atajo del arranque: con {@link list} y {@link organizations} hacen falta 1 + N
+     * peticiones para pintar el selector de organización. Aquí cada cliente trae su array
+     * `organizations` y su propio `total`.
+     */
+    async withOrganizations(options: RequestOptions = {}): Promise<Paginated<ClientWithOrganizations>> {
+        return this.getList<ClientWithOrganizations>("/clients_organizations", "clients", undefined, options);
     }
 
     /**

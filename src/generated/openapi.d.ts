@@ -192,6 +192,8 @@ export interface paths {
         /**
          * List the client's apps
          * @description The apps of a client. Secrets never travel here: to read one, ask for it explicitly with the `secret` endpoint.
+         *
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
          */
         get: operations["getClientApps"];
         put?: never;
@@ -204,6 +206,10 @@ export interface paths {
          *     Every URL is validated: a bad entry in `allowed_domains` answers 531, in `redirect_urls` 532, and a bad `webhook_url` answers 535.
          *
          *     **The secret is not in the response.** Read it with `GET /clients/{id_client}/apps/{id_app}/secret`.
+         *
+         *     **A client can only have ONE app.** Creating a second one is rejected with `ERROR_CODE_536`: delete or update the one that exists. The listing is paginated because every listing in this API is, not because there can be more than one.
+         *
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
          */
         post: operations["createClientApp"];
         delete?: never;
@@ -222,6 +228,8 @@ export interface paths {
         /**
          * Get one app
          * @description The app's record, without its secret. Note the envelope: `{client_app}` here, `{client_apps, total}` in the list.
+         *
+         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. A plan with at least two users is still required (`ERROR_CODE_511`).
          */
         get: operations["getClientApp"];
         /**
@@ -229,12 +237,18 @@ export interface paths {
          * @description Replaces the app's configuration. **Every field is overwritten with what you send**, so a `redirect_urls` you leave out becomes an empty list — send the whole object, not a patch.
          *
          *     Changing `webhook_url` takes effect on the next event; there is no verification handshake.
+         *
+         *     **It replaces every field with what the body carries.** `name`, `keycloak_client_idenfifier`, `allowed_domains`, `redirect_urls` and `webhook_url` are all written as sent, so omitting one erases it — sending an update without `webhook_url` turns the webhook off. Read the app first and send it back whole.
+         *
+         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. A plan with at least two users is still required (`ERROR_CODE_511`).
          */
         put: operations["updateClientApp"];
         post?: never;
         /**
          * Delete an app
          * @description Revokes the credentials and marks the app as deleted. **Tokens already issued stop working**: the token endpoint checks that the app still exists before answering, and requests carrying an old token no longer resolve to an app.
+         *
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
          */
         delete: operations["deleteClientApp"];
         options?: never;
@@ -254,6 +268,10 @@ export interface paths {
          * @description Returns the `client_secret` in clear. It is a separate endpoint precisely so that the secret never travels inside a listing that gets logged, cached or drawn on a screen by accident.
          *
          *     The same secret is what signs the outgoing webhooks (`x-hub-signature`, `x-hub-signature-256`).
+         *
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
+         *
+         *     It comes straight from Keycloak, so it is the live secret and not a copy: treat the response as a credential and never log it.
          */
         get: operations["getClientAppSecret"];
         put?: never;
@@ -322,6 +340,10 @@ export interface paths {
         /**
          * List AI publication plans
          * @description Return the organization's AI plans ordered by creation date (desc), paginated. Requires the ai_plans:read permission.
+         *
+         *     **Cancelled plans are not listed.** Deleting a plan sets it to `cancelled` rather than removing it, and this listing filters those out — so a plan you deleted simply stops appearing, while `GET` by id still returns it.
+         *
+         *     Without `limit` the whole list comes back.
          */
         get: operations["getAiPlans"];
         put?: never;
@@ -840,6 +862,8 @@ export interface paths {
          * @description The templates the **network** has approved for this account. They are read live from the network, not from our database, so a template approved a minute ago shows up here.
          *
          *     The shape of a template is the network's own: PlanVortex does not normalise it.
+         *
+         *     **WhatsApp only.** No other network implements message templates: asking any of them returns HTTP 500 with `code: 500` (an unhandled server error), not the 1502 you would expect. Check `messages` in `GET /social_capabilities` and that the account is WhatsApp before calling.
          */
         get: operations["getMessageTemplates"];
         put?: never;
@@ -848,11 +872,15 @@ export interface paths {
          * @description Sends a template to the network for approval. The body travels to the network as it is, so its fields are the network's (for WhatsApp: `name`, `language`, `category`, `components`).
          *
          *     **Approval is not immediate.** The template comes back in a pending state and only becomes usable when the network approves it, which takes minutes or hours and can be refused.
+         *
+         *     **WhatsApp only.** No other network implements message templates: asking any of them returns HTTP 500 with `code: 500` (an unhandled server error), not the 1502 you would expect. Check `messages` in `GET /social_capabilities` and that the account is WhatsApp before calling.
          */
         post: operations["createMessageTemplate"];
         /**
          * Delete a message template
          * @description Deletes the template on the network. **The template is identified by query parameters, not by a path segment**, and WhatsApp needs both the id and the name.
+         *
+         *     **WhatsApp only.** No other network implements message templates: asking any of them returns HTTP 500 with `code: 500` (an unhandled server error), not the 1502 you would expect. Check `messages` in `GET /social_capabilities` and that the account is WhatsApp before calling.
          */
         delete: operations["deleteMessageTemplate"];
         options?: never;
@@ -992,6 +1020,8 @@ export interface paths {
         /**
          * List products
          * @description The products of a catalogue, or a single product when `product_id` is sent. As with the catalogues, `total` counts the page.
+         *
+         *     **Facebook and Instagram only.** They are the only two networks with `products: true` in `GET /social_capabilities`; WhatsApp does not have it either, despite its own catalogue. Everything here speaks Meta Commerce, with Meta's own field names.
          */
         get: operations["getProducts"];
         put?: never;
@@ -1000,6 +1030,8 @@ export interface paths {
          * @description **One endpoint does both.** Send `id` in the body and the existing product is updated; leave it out and a new product is created inside `product_catalog_id`.
          *
          *     `product_catalog_id` travels as a **query parameter** and is required when creating. Without it the call answers error 2000.
+         *
+         *     **Facebook and Instagram only.** They are the only two networks with `products: true` in `GET /social_capabilities`; WhatsApp does not have it either, despite its own catalogue. Everything here speaks Meta Commerce, with Meta's own field names.
          */
         post: operations["createProduct"];
         delete?: never;
@@ -1020,6 +1052,8 @@ export interface paths {
          * @description The catalogues owned by the business behind this account.
          *
          *     **`total` is the size of the page, not of the collection.** Meta paginates with cursors and does not return a count, so there is nothing better to report: keep asking with a larger `offset` until a page comes back short.
+         *
+         *     **Facebook and Instagram only.** They are the only two networks with `products: true` in `GET /social_capabilities`; WhatsApp does not have it either, despite its own catalogue. Everything here speaks Meta Commerce, with Meta's own field names.
          */
         get: operations["getProductCatalogs"];
         put?: never;
@@ -1028,6 +1062,8 @@ export interface paths {
          * @description Creates a catalogue under the business behind this account. Only `name` is required.
          *
          *     **The answer carries the identifier, not the object**, even though the field is called `product_catalog`. Read the list back if you need the full catalogue.
+         *
+         *     **Facebook and Instagram only.** They are the only two networks with `products: true` in `GET /social_capabilities`; WhatsApp does not have it either, despite its own catalogue. Everything here speaks Meta Commerce, with Meta's own field names.
          */
         post: operations["createProductCatalog"];
         delete?: never;
@@ -2469,66 +2505,78 @@ export interface components {
         };
         AiPlansAiPlan: {
             /** @example 66d04a6a427f4c43b9d97f54 */
-            _id?: string;
+            _id: string;
             /** @description Accounts the plan was generated for. */
-            accounts?: string[];
+            accounts: string[];
             /** @description Generation attempts consumed (transient failures are retried, max 2). */
-            attempts?: number;
+            attempts: number;
             /** Format: date-time */
-            creation_date?: string;
+            creation_date: string;
             /** @description AI credits actually consumed by the generation. */
-            credits_spent?: number;
-            /** @description Last generation error (PublicationError pattern), if any. */
-            error?: Record<string, never>;
+            credits_spent: number;
+            /** @description Last generation error, in the same shape as an API error. Present only in state `failed`. */
+            error?: {
+                code: number;
+                data?: {
+                    [key: string]: unknown;
+                };
+                message: string;
+            };
             /** Format: date-time */
             generation_end_date?: string;
-            id_client?: string;
-            id_organization?: string;
+            id_client: string;
+            id_organization: string;
             /** @description User who requested the generation. */
             keycloak_identifier?: string;
-            options?: components["schemas"]["AiPlansAiPlanOptions"];
+            options: components["schemas"]["AiPlansAiPlanOptions"];
             /** @description Raw plan returned by the orchestrator, kept for audit (before validation/trimming). */
             orchestrator_result?: Record<string, never>;
-            prompt?: string;
-            /** @description Generated publications (normal drafts of the publication domain, populated on GET/validate). */
-            publications?: Record<string, never>[];
+            /** @description SNAPSHOT of the organization's brand context taken when the plan was created, so a retry or a regeneration reproduces the same plan even if the configuration changed. Absent when the plan was asked for without context, or when the organization had none. */
+            organization_context?: components["schemas"]["AiContext"];
+            prompt: string;
+            /**
+             * @description The generated publications — ordinary drafts of the publication domain.
+             *
+             *     **It is not always the same shape.** Reading one plan (`GET`, `validate`, `retry`) returns whole publications with their files resolved; the LISTING returns their identifiers as strings. Check before using them.
+             */
+            publications: (string | components["schemas"]["Publication"])[];
             /**
              * @description State machine: pending -> generating -> generated -> validated | failed | cancelled. Poll the plan while state is pending or generating.
              * @enum {string}
              */
-            state?: "pending" | "generating" | "generated" | "validated" | "failed" | "cancelled";
+            state: "pending" | "generating" | "generated" | "validated" | "failed" | "cancelled";
         };
         /** @description Deterministic cost estimate computed by the backend (never by the model). BYOK scopes cost 0 credits. */
         AiPlansAiPlanCostEstimate: {
-            available_credits?: number;
+            available_credits: number;
             /** @description Mandatory cost (orchestration + target texts). The plan is rejected if this exceeds the available credits. */
-            base_cost?: number;
+            base_cost: number;
             /** @description Total estimated cost including the financeable images (upper bound). */
-            estimated_cost?: number;
-            images_target?: number;
-            texts_target?: number;
+            estimated_cost: number;
+            images_target: number;
+            texts_target: number;
         };
         AiPlansAiPlanCreateRequest: {
             /** @description Account ids (belonging to the organization) to generate the plan for. */
             accounts: string[];
-            options?: components["schemas"]["AiPlansAiPlanOptions"];
+            options?: components["schemas"]["AiPlansAiPlanOptionsInput"];
             /** @description Theme prompt written by the user. */
             prompt: string;
         };
         AiPlansAiPlanCreateResponse: {
-            ai_plan?: components["schemas"]["AiPlansAiPlan"];
-            estimate?: components["schemas"]["AiPlansAiPlanCostEstimate"];
+            ai_plan: components["schemas"]["AiPlansAiPlan"];
+            estimate: components["schemas"]["AiPlansAiPlanCostEstimate"];
             /** @description Shortcut to estimate.estimated_cost. */
-            estimated_cost?: number;
+            estimated_cost: number;
         };
         AiPlansAiPlanList: {
-            ai_plans?: components["schemas"]["AiPlansAiPlan"][];
-            total?: number;
+            ai_plans: components["schemas"]["AiPlansAiPlan"][];
+            total: number;
         };
         AiPlansAiPlanOne: {
-            ai_plan?: components["schemas"]["AiPlansAiPlan"];
+            ai_plan: components["schemas"]["AiPlansAiPlan"];
         };
-        /** @description Generation options. Optimal publish slots are chosen deterministically by the backend from a fixed table per network, converted to this timezone; the model never invents times. */
+        /** @description Generation options as they were STORED, already normalised: `publish_days` comes sorted and deduplicated, and every default has been resolved. */
         AiPlansAiPlanOptions: {
             /**
              * @description Whether images may be generated. Each image costs 70 AI credits.
@@ -2536,7 +2584,7 @@ export interface components {
              */
             allow_images: boolean;
             /** @description Upload ids from the organization's gallery used as visual reference for the generated images. */
-            gallery_uploads?: string[];
+            gallery_uploads: string[];
             /**
              * @description Language of the generated texts.
              * @default es
@@ -2558,6 +2606,11 @@ export interface components {
              */
             publish_days: number[];
             /**
+             * @description Generate ONE piece of content per day and replicate it across every account, each scheduled at the best hour for ITS network, instead of one publication per account and day. Cheaper — one text and one image per day — and it caps images at 7.
+             * @default false
+             */
+            shared: boolean;
+            /**
              * @description IANA timezone for the optimal publish slots (typically the user's browser timezone). publish_date is stored in UTC.
              * @default Europe/Madrid
              */
@@ -2565,23 +2618,63 @@ export interface components {
             /** @description Optional tone (e.g. 'cercano', 'profesional') passed to the prompt. */
             tone?: string;
             /**
+             * @description Use the organization's brand context in the prompts. It is copied into the plan as a SNAPSHOT when the plan is created, so a retry or a regeneration uses the context the plan was asked with even if the configuration changed meanwhile.
+             * @default true
+             */
+            use_organization_context: boolean;
+            /**
+             * Format: date-time
+             * @description Start of the week to plan (slots are generated between this date and +7 days). Defaults to now.
+             */
+            week_start: string;
+        };
+        /** @description Generation options, as you SEND them: every one is optional and the server fills in its default. Optimal publish slots are chosen deterministically by the backend from a fixed table per network, converted to this timezone; the model never invents times. */
+        AiPlansAiPlanOptionsInput: {
+            /** @description Whether images may be generated. Each image costs 70 AI credits. Optional; defaults to `true`. */
+            allow_images?: boolean;
+            /** @description Upload ids from the organization's gallery used as visual reference for the generated images. */
+            gallery_uploads?: string[];
+            /** @description Language of the generated texts. Optional; defaults to `"es"`. */
+            language?: string;
+            /** @description Optional cap on the number of images; the credit budget may reduce it further. */
+            max_images?: number;
+            /** @description Days of the week the plan publishes on, in ISO 8601 numbering (1 = Monday ... 7 = Sunday). Defaults to the whole week. There is still at most ONE publication per day and account, so this is what bounds the size and the cost of the plan: the number of generated posts is (selected days x accounts). Must be a non-empty array of unique integers between 1 and 7, or the request is rejected with 2106. The 7-day window starts at week_start, so each ISO day appears exactly once: with a week_start in mid-week, day 1 (Monday) is the FOLLOWING Monday. If the selected days leave no future slot at all, the request is rejected with 2108. Optional; defaults to `[1,2,3,4,5,6,7]`. */
+            publish_days?: number[];
+            /** @description Generate ONE piece of content per day and replicate it across every account, each scheduled at the best hour for ITS network, instead of one publication per account and day. Cheaper — one text and one image per day — and it caps images at 7. Optional; defaults to `false`. */
+            shared?: boolean;
+            /** @description IANA timezone for the optimal publish slots (typically the user's browser timezone). publish_date is stored in UTC. Optional; defaults to `"Europe/Madrid"`. */
+            timezone?: string;
+            /** @description Optional tone (e.g. 'cercano', 'profesional') passed to the prompt. */
+            tone?: string;
+            /** @description Use the organization's brand context in the prompts. It is copied into the plan as a SNAPSHOT when the plan is created, so a retry or a regeneration uses the context the plan was asked with even if the configuration changed meanwhile. Optional; defaults to `true`. */
+            use_organization_context?: boolean;
+            /**
              * Format: date-time
              * @description Start of the week to plan (slots are generated between this date and +7 days). Defaults to now.
              */
             week_start?: string;
         };
+        /**
+         * @description An app: the credentials a third-party integration authenticates with.
+         *
+         *     **The secret is not here.** It lives in Keycloak and is read with `GET /clients/{id_client}/apps/{id_app}/secret`, which needs a user token.
+         */
         AppsClientApp: {
-            _id?: string;
-            allowed_domains?: string[];
+            _id: string;
+            allowed_domains: string[];
             /** Format: date-time */
-            creation_date?: string;
-            id_client?: string;
+            creation_date: string;
+            /** @description Deleting an app marks it instead of removing it — the Keycloak client is gone, so it can no longer get a token — and the listing filters those out. */
+            deleted: boolean;
+            /** Format: date-time */
+            deleted_date?: string;
+            id_client: string;
             /** @description The user who created the app, when it was created from the panel. */
             id_user?: string;
             /** @description The app's `client_id`. */
-            keycloak_client_idenfifier?: string;
-            name?: string;
-            redirect_urls?: string[];
+            keycloak_client_idenfifier: string;
+            name: string;
+            redirect_urls: string[];
             /**
              * @description Where PlanVortex posts events, when one is configured.
              *
@@ -2606,7 +2699,7 @@ export interface components {
         /** @description The error shape of the token endpoint, and **only** of the token endpoint. Every other endpoint in the API answers with `Error` instead. */
         AppsOAuthError: {
             /** @enum {string} */
-            error?: "invalid_request" | "invalid_client" | "unsupported_grant_type" | "slow_down" | "server_error";
+            error: "invalid_request" | "invalid_client" | "unsupported_grant_type" | "slow_down" | "server_error";
             error_description?: string;
         };
         AppsTokenRequest: {
@@ -2624,12 +2717,12 @@ export interface components {
         };
         AppsTokenResponse: {
             /** @description Send it as `Authorization: Bearer <access_token>`. */
-            access_token?: string;
+            access_token: string;
             /** @description Seconds the token is valid for. Refresh shortly before it runs out; there is no refresh token. */
-            expires_in?: number;
+            expires_in: number;
             scope?: string;
             /** @description Always `Bearer`. */
-            token_type?: string;
+            token_type: string;
         };
         /** @description Accepted crops. `values` and `text` are parallel arrays: same index, same ratio. */
         CatalogAspectRatios: {
@@ -2665,18 +2758,21 @@ export interface components {
             /** @description Read-only. True when an encrypted API key is stored for this scope. */
             readonly has_api_key?: boolean;
             /** @description Model identifier at the chosen provider (e.g. google/gemini-3-flash). */
-            model?: string;
+            model: string;
             /**
              * @description Fixed catalogue of allowed providers. The provider must support the capability of the scope (text for orchestrator/text, image for image).
              * @enum {string}
              */
-            provider?: "openrouter" | "openai" | "google" | "anthropic";
+            provider: "openrouter" | "openai" | "google" | "anthropic";
         };
-        /** @description Per-scope AI provider configuration (BYOK). Each key is an AI scope; a scope set to null clears its configuration. Scopes: orchestrator and text require a text-capable provider; image requires an image-capable provider; video is reserved for Fase 2. */
+        /** @description Per-scope AI provider configuration (BYOK). Only the scopes you send are touched; a scope set to `null` clears its configuration and returns that scope to PlanVortex credits. `orchestrator` and `text` need a text-capable provider, `image` needs an image-capable one. `video` is reserved for a later phase. */
         ClientsAiSettings: {
-            image?: components["schemas"]["ClientsAiScopeSetting"];
-            orchestrator?: components["schemas"]["ClientsAiScopeSetting"];
-            text?: components["schemas"]["ClientsAiScopeSetting"];
+            /** @description Configuration of the `image` scope. **`null` clears it** and returns the scope to PlanVortex credits. */
+            image?: components["schemas"]["ClientsAiScopeSetting"] | null;
+            /** @description Configuration of the `orchestrator` scope. **`null` clears it** and returns the scope to PlanVortex credits. */
+            orchestrator?: components["schemas"]["ClientsAiScopeSetting"] | null;
+            /** @description Configuration of the `text` scope. **`null` clears it** and returns the scope to PlanVortex credits. */
+            text?: components["schemas"]["ClientsAiScopeSetting"] | null;
         };
         /** @description Who contracts the plan and whom the organizations hang from. */
         ClientsClient: {
@@ -2788,33 +2884,41 @@ export interface components {
         };
         /** @description A comment — or a review — as PlanVortex stores it. Remember it is a **snapshot** of what the network said at `collected_date`; the live thread endpoints return the same shape reconciled against the network. */
         CommentsComment: {
-            _id?: string;
-            author?: components["schemas"]["CommentsCommentAuthor"];
+            _id: string;
+            author: components["schemas"]["CommentsCommentAuthor"];
             /**
              * Format: date-time
              * @description When PlanVortex last read it. The inbox is a photograph and this says how old it is.
              */
-            collected_date?: string;
+            collected_date: string;
             /**
              * Format: date-time
              * @description When it was written **on the network**. This is what orders the inbox.
              */
-            creation_date?: string;
+            creation_date: string;
             /** @description Gone from the network. The row is kept so it is not created again by the next read or by a repeated webhook; it stops appearing in the inbox. */
-            deleted?: boolean;
+            deleted: boolean;
             /**
              * @description The comment's id on the network. Unique per account, and what makes repeated webhook deliveries idempotent.
              *
              *     One exception worth knowing: a Google Business reply has no id of its own — it is a *field* of the review — so PlanVortex fabricates a stable one, `{reviewId}/reply`.
              */
-            external_id?: string;
+            external_id: string;
             /** @description Hidden on the network. A hidden comment is never swept as deleted: on YouTube, hiding one makes the API stop returning it forever, and without that exception hiding would be indistinguishable from deleting. */
-            hidden?: boolean;
-            /** @description The connected account it arrived on. Populated with the whole account object in the inbox listing. */
-            id_account?: string;
-            id_organization?: string;
-            /** @description **Your** publication, when there is one — and there often is not: a video uploaded to the channel by hand, a post that predates PlanVortex, and every Google Business review have comments with no publication of ours behind them. What always identifies the target is `publication_external_id`. */
-            id_publication?: string;
+            hidden: boolean;
+            /**
+             * @description The connected account it arrived on.
+             *
+             *     **It is not always the same shape.** The inbox listing (`GET /organizations/{id}/comments`) returns the whole account resolved; every other operation — the live threads, the reply, the update — returns its identifier as a string. Check before using it.
+             */
+            id_account: string | components["schemas"]["Account"];
+            id_organization: string;
+            /**
+             * @description **Your** publication, when there is one — and there often is not: a video uploaded to the channel by hand, a post that predates PlanVortex, and every Google Business review have comments with no publication of ours behind them. What always identifies the target is `publication_external_id`.
+             *
+             *     Same asymmetry as `id_account`: the inbox listing resolves it into the whole publication, every other operation returns the identifier as a string.
+             */
+            id_publication?: string | components["schemas"]["Publication"];
             /** @description Absent when the network does not publish it — not zero */
             like_count?: number;
             /** @description The network id of your reply, so you can find it or delete it later */
@@ -2822,7 +2926,7 @@ export interface components {
             /** @description Present only when this is a reply to another comment */
             parent_external_id?: string;
             /** @description What the comment hangs off, on the network: the post/video id in five networks, and the **listing** (`locations/{id}`) for a Google Business review. */
-            publication_external_id?: string;
+            publication_external_id: string;
             /**
              * @description Star rating of a **review**. Present only on review networks — today Google Business. Its absence means "this network has no such thing", never zero.
              *
@@ -2830,14 +2934,14 @@ export interface components {
              */
             rating?: number;
             /** @description Yours, not the network's. A live read never overwrites it. */
-            read?: boolean;
+            read: boolean;
             /** @description Yours, not the network's. Set when you reply through the API. */
-            replied?: boolean;
+            replied: boolean;
             /** @description Absent when the network does not publish it — not zero */
             reply_count?: number;
-            social_network?: components["schemas"]["CommentsCommentNetworkName"];
+            social_network: components["schemas"]["CommentsCommentNetworkName"];
             /** @description **May legitimately be empty.** A stars-only review carries no text at all, so render `rating` alongside it and never assume a blank comment is a loading failure. */
-            text?: string;
+            text: string;
         };
         /** @description What one network lets you do to a comment. Four booleans and never fewer: an absent key would be indistinguishable from an oversight. */
         CommentsCommentActions: {
@@ -2851,9 +2955,9 @@ export interface components {
         /** @description Who wrote it. Embedded in the comment and **not** a contact: a YouTube commenter has no private inbox you could ever write to, so they get no contact record. */
         CommentsCommentAuthor: {
             /** @description The author's id on the network. When the network gives none — Google Business publishes no identifier for a reviewer — this falls back to the review's own id, which means two reviews by the same person look like two different authors. There is no way around it from the API. */
-            external_id?: string;
+            external_id: string;
             /** @description Whether the connected account wrote it. This is what separates "delete mine" from "delete theirs", and what keeps your own replies out of the inbox. */
-            is_own?: boolean;
+            is_own: boolean;
             /** @description Display name. Always present for a review, including anonymous ones, which get a placeholder rather than an empty string. */
             name?: string;
             profile_pic?: string;
@@ -2865,13 +2969,13 @@ export interface components {
         CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "google_business" | "bluesky" | "discord";
         /** @description A live read: asked of the network and reconciled with what was stored. */
         CommentsCommentThread: {
-            comments?: components["schemas"]["CommentsComment"][];
+            comments: components["schemas"]["CommentsComment"][];
             /** @description X credits this read spent from the client's monthly pool. `0` on every other network. Charged after the fact and by real units, so a failed read charges nothing. */
-            credits_consumed?: number;
+            credits_consumed: number;
             /** @description Opaque page token from the network. Pass it back as `offset`; absent means there is no next page. */
             next_cursor?: string;
             /** @description What the network says the total is. On a Google Business listing it is the number of **reviews**, which is not the length of `comments`: your replies travel in the same array as children of the review they answer. */
-            total?: number;
+            total: number;
         };
         /**
          * @description One change in the array PlanVortex posts to your app's `webhook_url`, when an **integration** stopped working: a revoked Google Drive token, a feed that no longer answers, a publication quota that ran out.
@@ -2981,96 +3085,162 @@ export interface components {
             string_property2?: string;
             zip_code?: string | number;
         };
-        ContactsContactInput: {
+        /**
+         * @description A new contact. **At least one identifier is mandatory** (`ERROR_CODE_1601` otherwise): a contact with no channel is a contact nobody can write to.
+         *
+         *     Creating is idempotent on the FIRST identifier: if the organization already has a contact with that channel and that `external_identifier`, you get the existing one back untouched — `name`, `profile_image` and `extra_data` of the request are ignored. There is no "already exists" error.
+         */
+        ContactsContactCreate: {
             extra_data?: components["schemas"]["ContactExtraData"];
             name?: string;
             profile_image?: string;
-            social_identifiers?: components["schemas"]["SocialIdentifier"][];
+            social_identifiers: components["schemas"]["ContactsSocialIdentifierInput"][];
+        };
+        /**
+         * @description Changes to a contact. `name`, `profile_image` and `social_identifiers` are left alone when you omit them.
+         *
+         *     **`extra_data` is the exception and it is destructive**: it is written with whatever the body carries, so omitting it ERASES every custom field on the contact. Read the contact, change what you need and send the whole block back.
+         */
+        ContactsContactUpdate: {
+            /** @description Written as sent. **Omitting it erases the contact's custom fields.** */
+            extra_data?: components["schemas"]["ContactExtraData"];
+            name?: string;
+            profile_image?: string;
+            /** @description Replaces the whole list, it does not merge into it. Omit it to keep the current one. */
+            social_identifiers?: components["schemas"]["ContactsSocialIdentifierInput"][];
+        };
+        /** @description The same person on one channel, as you SEND it. `_id` is optional here and PlanVortex mints one when it is missing — which is the difference with `SocialIdentifier`, where it always travels back. */
+        ContactsSocialIdentifierInput: {
+            /** @description Only when you are keeping an identifier the API already gave you. */
+            _id?: string;
+            /** @description The contact id on that channel — the phone number on WhatsApp, the PSID on Messenger. Optional in the model, but a contact without it cannot be written to, and it is what deduplicates on create. */
+            external_identifier?: string;
+            social_network: components["schemas"]["ContactChannel"];
         };
         /** @description A connected account that has stopped working: an expired token or a revoked permission. Until it is reconnected it neither publishes nor measures. */
         DashboardAccountWithError: {
-            _id?: string;
+            _id: string;
             /** @description PlanVortex error code that broke it. `0` means healthy, so anything here is non-zero. */
-            error_code?: number;
+            error_code: number;
             image?: string;
-            name?: string;
-            social_network?: components["schemas"]["SocialNetwork"];
+            name: string;
+            social_network: components["schemas"]["SocialNetwork"];
             username?: string;
         };
+        /**
+         * @description Everything the home screen needs, in ONE round trip.
+         *
+         *     **A missing block is not an error.** Each one is checked against its own permission and omitted when the caller cannot read it, instead of failing the whole request; `available_blocks` says which ones were allowed. A block that is `true` in `available_blocks` and absent from the body means there was no data — except `messages`, which also turns to `false` when the plan does not include chat.
+         */
         DashboardDashboard: {
             account_metrics?: {
-                by_day?: components["schemas"]["DashboardMetricRow"][];
-                by_network?: components["schemas"]["DashboardMetricRow"][];
-                previous_total?: components["schemas"]["DashboardNormalizedMetrics"];
-                total?: components["schemas"]["DashboardNormalizedMetrics"];
+                by_day: components["schemas"]["DashboardMetricRow"][];
+                by_network: components["schemas"]["DashboardMetricRow"][];
+                previous_total: components["schemas"]["NormalizedMetrics"];
+                total: components["schemas"]["NormalizedMetrics"];
             };
             ai_plans?: {
-                by_state?: {
+                by_state: {
                     state?: string;
                     total?: number;
                 }[];
-                credits_spent?: number;
-                /** @description The most recent plan of the organization, whatever the range. It is what tells you at a glance whether one is still generating, failed, or is waiting to be validated. */
-                last_plan?: {
-                    [key: string]: unknown;
-                };
+                credits_spent: number;
                 /** @description Publications generated by the plans of the range. */
-                publications?: number;
-                total?: number;
+                generated_publications: number;
+                /** @description The most recent plan of the organization, **whatever the range**. Absent when there has never been one. */
+                last_plan?: components["schemas"]["DashboardDashboardAiPlanRef"];
+                /** @description Plans already generated and **waiting for someone to validate them**: work paid for that is not publishing anything yet. */
+                pending_validation: number;
+                total: number;
             };
             /** @description Which blocks the caller was allowed to see. A `false` here is a permission (or plan) answer; a block that is `true` but empty means there is no data. */
-            available_blocks?: {
-                account_metrics?: boolean;
-                ai_plans?: boolean;
-                health?: boolean;
-                messages?: boolean;
-                plan_use?: boolean;
-                publication_metrics?: boolean;
-                publications?: boolean;
+            available_blocks: {
+                account_metrics: boolean;
+                ai_plans: boolean;
+                health: boolean;
+                messages: boolean;
+                plan_use: boolean;
+                publication_metrics: boolean;
+                publications: boolean;
             };
             /** @description What needs fixing today. Each half has its own permission: somebody who cannot read accounts still sees the failed publications. */
             health?: {
                 accounts_with_errors?: components["schemas"]["DashboardAccountWithError"][];
                 /** @description Up to ten publications in state `with_errors`, newest first. */
-                publications_with_errors?: {
-                    [key: string]: unknown;
-                }[];
+                publications_with_errors?: components["schemas"]["DashboardDashboardPublicationRef"][];
                 total_drafts?: number;
                 /** @description Up to ten publications due in the next 48 hours. */
-                upcoming_publications?: {
-                    [key: string]: unknown;
-                }[];
+                upcoming_publications?: components["schemas"]["DashboardDashboardPublicationRef"][];
             };
             messages?: {
-                unread?: number;
+                unread: number;
             };
             plan_use?: components["schemas"]["DashboardPlanUse"];
             publication_metrics?: {
-                by_network?: {
-                    metrics?: components["schemas"]["DashboardNormalizedMetrics"];
+                by_network: {
+                    metrics?: components["schemas"]["NormalizedMetrics"];
                     publications?: number;
                     social_network?: components["schemas"]["SocialNetwork"];
                 }[];
-                previous_total?: components["schemas"]["DashboardNormalizedMetrics"];
-                top?: components["schemas"]["DashboardTopPublication"][];
-                total?: components["schemas"]["DashboardNormalizedMetrics"];
+                previous_total: components["schemas"]["NormalizedMetrics"];
+                top: components["schemas"]["DashboardTopPublication"][];
+                total: components["schemas"]["NormalizedMetrics"];
             };
             publications?: components["schemas"]["DashboardPublicationsSummary"] & {
                 /** @description The same count for the previous period, for the delta. */
                 previous_total?: number;
             };
-            range?: components["schemas"]["DashboardDashboardRange"];
+            range: components["schemas"]["DashboardDashboardRange"];
+        };
+        /** @description The most recent AI plan, projected: enough to tell at a glance whether one is still generating, failed, or is waiting to be validated. `publications` are identifiers here. */
+        DashboardDashboardAiPlanRef: {
+            _id: string;
+            /** Format: date-time */
+            creation_date: string;
+            credits_spent?: number;
+            error?: {
+                code: number;
+                data?: {
+                    [key: string]: unknown;
+                };
+                message: string;
+            };
+            /** Format: date-time */
+            generation_end_date?: string;
+            prompt?: string;
+            publications?: string[];
+            /** @enum {string} */
+            state: "pending" | "generating" | "generated" | "validated" | "failed" | "cancelled";
+        };
+        /** @description A publication as the health block projects it: a handful of fields, not a whole `Publication`. `state` is not among them — the list it came from already says what state it is in. */
+        DashboardDashboardPublicationRef: {
+            _id: string;
+            /** Format: date-time */
+            creation_date?: string;
+            name?: string;
+            /** @description Only on the failed ones. Same shape as in a full `Publication`. */
+            publication_errors?: {
+                code: number;
+                data?: {
+                    [key: string]: unknown;
+                };
+                message: string;
+            }[];
+            /** Format: date-time */
+            publish_date?: string;
+            social_network: components["schemas"]["SocialNetwork"];
+            text?: string;
         };
         /** @description The range that was actually used, plus the previous period of exactly the same length. The previous one is not "last month": comparing 30 days against a calendar month would move the delta with the calendar. */
         DashboardDashboardRange: {
             /** Format: date-time */
-            from_date?: string;
+            from_date: string;
             /** Format: date-time */
-            previous_from_date?: string;
+            previous_from_date: string;
             /** Format: date-time */
-            previous_to_date?: string;
+            previous_to_date: string;
             /** Format: date-time */
-            to_date?: string;
+            to_date: string;
         };
         /**
          * @description A metric in PlanVortex's common vocabulary. Each network reports what it reports and PlanVortex translates it; a metric a network does not publish is absent, never zero.
@@ -3078,59 +3248,75 @@ export interface components {
          */
         DashboardMetricName: "impressions" | "reach" | "engagement" | "likes" | "comments" | "shares" | "saves" | "clicks" | "video_views" | "profile_views" | "followers" | "followers_gained";
         DashboardMetricRow: {
-            /** @description The value of the axis: the day, the network or the account identifier. `null` when `group_by` was `total`. */
-            group?: string;
-            name?: components["schemas"]["DashboardMetricName"];
-            value?: number;
-        };
-        /** @description Metric name to value. A missing key means the network does not publish that metric. */
-        DashboardNormalizedMetrics: {
-            [key: string]: number;
+            /** @description The value of the axis: the day, the network or the account identifier. **`null` when `group_by` was `total`** — the field is always there, the value is not always a string. */
+            group: string | null;
+            name: components["schemas"]["DashboardMetricName"];
+            value: number;
         };
         DashboardPlanUse: {
             /** @description What has been handed down to child organizations out of this organization's plan. */
-            actual_asigned?: components["schemas"]["PlanData"];
+            actual_asigned: components["schemas"]["PlanData"];
             /** @description What the organization and its children are consuming right now. */
-            actual_use?: components["schemas"]["PlanData"];
+            actual_use: components["schemas"]["PlanData"];
             /** @description The plan in force. An organization with no plan of its own inherits the closest parent that has one. */
-            limits?: components["schemas"]["PlanData"];
+            limits: components["schemas"]["PlanData"];
         };
         DashboardPublicationsSummary: {
             /** @description Publications **created** each day, split by state. */
-            by_day?: {
+            by_day: {
                 /** @description `YYYY-MM-DD`, in UTC. */
                 day?: string;
                 state?: string;
                 total?: number;
             }[];
-            by_network?: {
+            by_network: {
                 social_network?: components["schemas"]["SocialNetwork"];
                 total?: number;
             }[];
-            by_state?: {
+            by_state: {
                 state?: string;
                 total?: number;
             }[];
             /** @description Publications that actually **went out** each day, split by network. Only the ones in state `sended`. */
-            published_by_day?: {
+            published_by_day: {
                 /** @description `YYYY-MM-DD`, in UTC. */
                 day?: string;
                 social_network?: components["schemas"]["SocialNetwork"];
                 total?: number;
             }[];
             /** @description Publications created in the range. */
-            total?: number;
+            total: number;
         };
+        /**
+         * @description One row of the ranking. It comes out of the stats aggregation, not out of the publications collection, so it does **not** have the shape of a `Publication`: there is no `_id` (the identifier is `id_publication`) and the content travels nested under `publication`.
+         *
+         *     Only publications that have already been measured can appear here. For a listing that includes the unmeasured ones, use `GET /organizations/{id}/publications/stats`.
+         */
         DashboardTopPublication: {
-            _id?: string;
-            metrics?: components["schemas"]["DashboardNormalizedMetrics"];
-            name?: string;
+            /**
+             * Format: date-time
+             * @description When this measurement was taken.
+             */
+            collected_date?: string;
+            /**
+             * @description What this row's engagement rate is divided by. **Two rows with different bases are not comparable**, so say which one it is when you put them in the same table.
+             * @enum {string}
+             */
+            engagement_base?: "reach" | "impressions" | "followers";
+            id_publication: string;
+            metrics: components["schemas"]["NormalizedMetrics"];
+            /** @description The bit of the publication needed to render the row. Nothing else is projected. */
+            publication: {
+                external_identifier?: string;
+                files?: components["schemas"]["Upload"][];
+                publication_type?: string;
+                text?: string;
+                title?: string;
+                url?: string;
+            };
             /** Format: date-time */
             publish_date?: string;
-            social_network?: components["schemas"]["SocialNetwork"];
-            text?: string;
-        } & {
-            [key: string]: unknown;
+            social_network: components["schemas"]["SocialNetwork"];
         };
         /**
          * @description Error payload returned by every failing request.
@@ -3175,13 +3361,15 @@ export interface components {
         };
         /** @description Credentials are never returned. `connected` is the summary the panel paints: false means the connection failed and needs attention. */
         IntegrationsIntegration: {
-            _id?: string;
-            config?: components["schemas"]["IntegrationsRssConfig"];
-            connected?: boolean;
+            _id: string;
+            /** @description Provider-specific configuration. **Empty object for `google_drive`** — the Picker supplies everything — so every field here is optional and only an `rss` integration fills them in. */
+            config: components["schemas"]["IntegrationsRssConfig"];
+            /** @description `error_code` is empty. It is computed on the way out, not stored: the panel needs to know whether the connection is alive, not with which credentials. */
+            connected: boolean;
             /** Format: date-time */
-            creation_date?: string;
+            creation_date: string;
             /** @description Only enabled integrations consume plan allowance. */
-            enabled?: boolean;
+            enabled: boolean;
             /** @description PlanVortex error code of the last failure (2203 token revoked, 2205 feed unreachable, 924 no publication allowance left…). */
             error_code?: number | null;
             /**
@@ -3189,17 +3377,17 @@ export interface components {
              * @example ana@empresa.com
              */
             external_identifier?: string;
-            id_client?: string;
-            id_organization?: string;
+            id_client: string;
+            id_organization: string;
             /** Format: date-time */
             last_used_date?: string;
             /** @example Drive de ana@empresa.com */
-            name?: string;
-            provider?: components["schemas"]["IntegrationsIntegrationProviderName"];
+            name: string;
+            provider: components["schemas"]["IntegrationsIntegrationProviderName"];
         };
         IntegrationsIntegrationProvider: {
             /**
-             * @description File formats accepted at the door. heic/heif are accepted and converted to JPEG on ingestion, so what ends up stored is always jpeg.
+             * @description File formats accepted at the door. **Empty when `file_import` is false** — that is what `rss` returns, and it does not mean "anything goes". heic/heif are accepted and converted to JPEG on ingestion, so what ends up stored is always jpeg.
              * @example [
              *       "mp4",
              *       "jpeg",
@@ -3210,22 +3398,22 @@ export interface components {
              *       "heif"
              *     ]
              */
-            accepted_formats?: string[];
-            config_fields?: {
+            accepted_formats: string[];
+            config_fields: {
                 default?: unknown;
-                name?: string;
+                name: string;
                 options?: string[];
                 required?: boolean;
                 /** @enum {string} */
-                type?: "url" | "text" | "textarea" | "boolean" | "accounts" | "select";
+                type: "url" | "text" | "textarea" | "boolean" | "accounts" | "select";
             }[];
             /** @description Polled by the poll-feeds job, which turns new entries into publications. */
-            content_feed?: boolean;
+            content_feed: boolean;
             /** @description Contributes files to the library through POST /uploads/import. */
-            file_import?: boolean;
-            provider?: components["schemas"]["IntegrationsIntegrationProviderName"];
+            file_import: boolean;
+            provider: components["schemas"]["IntegrationsIntegrationProviderName"];
             /** @description true = connect with connect_link + code. false = connect with a form built from config_fields. */
-            requires_oauth?: boolean;
+            requires_oauth: boolean;
         };
         /** @enum {string} */
         IntegrationsIntegrationProviderName: "google_drive" | "rss";
@@ -3243,29 +3431,18 @@ export interface components {
             url?: string;
         };
         IntegrationsRssConnectRequest: {
-            /**
-             * @description false (the default) creates each entry as a draft for review. true schedules it a few minutes out, so there is a window to catch it before it goes out on the client's networks.
-             * @default false
-             */
-            auto_publish: boolean;
+            /** @description false (the default) creates each entry as a draft for review. true schedules it a few minutes out, so there is a window to catch it before it goes out on the client's networks. Optional; defaults to `false`. */
+            auto_publish?: boolean;
             /** @description Accounts of this organization the entries will be published to. At least one, otherwise 2206. */
             id_accounts: string[];
-            /**
-             * @description Import the entry's featured image (enclosure, media:content or the first <img> of the content) into the library and attach it.
-             * @default true
-             */
-            import_image: boolean;
+            /** @description Import the entry's featured image (enclosure, media:content or the first <img> of the content) into the library and attach it. Optional; defaults to `true`. */
+            import_image?: boolean;
             /** @enum {string} */
             provider: "rss";
-            /** @default profile */
-            publication_type: string;
-            /**
-             * @description Text template. Placeholders: {{title}}, {{link}}, {{summary}}. The result is truncated to the character limit of each network, taken from GET /social_limits.
-             * @default {{title}}
-             *
-             *     {{link}}
-             */
-            template: string;
+            /** @description Optional; defaults to `"profile"`. */
+            publication_type?: string;
+            /** @description Text template. Placeholders: {{title}}, {{link}}, {{summary}}. The result is truncated to the character limit of each network, taken from GET /social_limits. Optional; defaults to `"{{title}}\n\n{{link}}"`. */
+            template?: string;
             /**
              * @description Public feed URL (RSS 2.0 or Atom). Private or authenticated feeds are not supported.
              * @example https://blog.cliente.com/feed
@@ -3330,34 +3507,38 @@ export interface components {
         };
         /** @description One contact's thread, as it looks in an inbox list. */
         MessagesConversation: {
-            contact?: components["schemas"]["Contact"];
+            contact: components["schemas"]["Contact"];
             /**
              * Format: date-time
              * @description When the last message of the thread was written, which is what the list is sorted by.
              */
-            date?: string;
+            date: string;
             /** @description Unread messages **from the contact**. Ours never count. */
-            unread_messages?: number;
+            unread_messages: number;
         };
-        /** @description Either `total` (no `group_by`) or `stats` plus `group` (with it). Never both. */
+        /** @description Two different answers, not one with optional fields: **without** `group_by` you get `{total}`, **with** it you get `{stats, group}`. Never both. */
         MessagesConversationTotals: {
+            /** @description Conversations in the range. A conversation is one contact on one day, so the same person writing on Monday and on Tuesday counts twice. */
+            total: number;
+        } | {
             /**
              * @description The grouping that was applied.
              * @enum {string}
              */
-            group?: "day" | "month" | "year";
-            /** @description The series, sorted ascending. Only when `group_by` was sent. */
-            stats?: {
-                /** @description Day of the year, month number or year, depending on `group`. */
-                groupValue?: number;
-                totalConversations?: number;
+            group: "day" | "month" | "year";
+            /** @description The series, sorted ascending. Empty when the range has no conversations. */
+            stats: {
+                /** @description The **number** Mongo's `$dayOfYear` / `$month` / `$year` gives, not a date: 240 for day, 8 for month, 2026 for year. Two years in the same `day` series collide on the same value — narrow the range instead. */
+                groupValue: number;
+                totalConversations: number;
             }[];
-            /** @description Conversations in the range. Only when `group_by` was not sent. */
-            total?: number;
         };
+        /**
+         * @description What you send to write a message.
+         *
+         *     **`comment_message` and `publication_message` cannot be sent through this endpoint today.** Both need `in_response_external_id` — the id of the post or comment being answered — and the endpoint does not read it from the body, so the message would leave with an empty recipient. Use them only through the network's own webhook flow.
+         */
         MessagesMessageInput: {
-            /** @description Identifier of the publication or comment being answered. Required by `comment_message` and `publication_message`. */
-            in_response_external_id?: string;
             message_options?: components["schemas"]["MessageOptions"];
             message_type: components["schemas"]["MessageType"];
             /** @description Required for the text-based types. Validated against `characters` in `GET /social_limits`. */
@@ -3368,6 +3549,32 @@ export interface components {
          * @enum {string}
          */
         MessageType: "simple_message" | "file_message" | "comment_message" | "publication_message" | "quick_reply_message" | "button_message" | "elements_message" | "postback_message" | "template_message" | "interactive_message";
+        /**
+         * @description Metrics translated to a **common vocabulary** shared by every network, which is what makes two networks comparable and summable (each network names them differently: `page_post_engagements`, `total_interactions`, `views`…).
+         *
+         *     **A missing key means the network does not publish that metric** — it is never an implicit zero. A key present with value `0` means it was measured and came out zero. Never default a missing key to 0 when displaying it.
+         *
+         *     `engagement` is the network's own total when it provides one, and otherwise the sum of likes, comments, shares, saves and clicks. Video views are deliberately excluded from it: a view is not an interaction.
+         */
+        NormalizedMetrics: {
+            clicks?: number;
+            comments?: number;
+            /** @description Total interactions */
+            engagement?: number;
+            /** @description Followers accumulated at that date, not the day's gain. */
+            followers?: number;
+            /** @description Followers gained that day. */
+            followers_gained?: number;
+            /** @description Times the content was shown (not unique) */
+            impressions?: number;
+            likes?: number;
+            profile_views?: number;
+            /** @description Unique users reached */
+            reach?: number;
+            saves?: number;
+            shares?: number;
+            video_views?: number;
+        };
         /** @description The container of accounts, publications and files. Organizations can nest. */
         Organization: {
             /** @example 66d04a6a427f4c43b9d97f54 */
@@ -3564,33 +3771,7 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /**
-         * @description Metrics translated to a **common vocabulary** shared by every network, which is what makes two networks comparable and summable (each network names them differently: `page_post_engagements`, `total_interactions`, `views`…).
-         *
-         *     **A missing key means the network does not publish that metric** — it is never an implicit zero. A key present with value `0` means it was measured and came out zero. Never default a missing key to 0 when displaying it.
-         *
-         *     `engagement` is the network's own total when it provides one, and otherwise the sum of likes, comments, shares, saves and clicks. Video views are deliberately excluded from it: a view is not an interaction.
-         */
-        PublicationsNormalizedMetrics: {
-            clicks?: number;
-            comments?: number;
-            /** @description Total interactions */
-            engagement?: number;
-            /** @description Followers accumulated at that date, not the day's gain. */
-            followers?: number;
-            /** @description Followers gained that day. */
-            followers_gained?: number;
-            /** @description Times the content was shown (not unique) */
-            impressions?: number;
-            likes?: number;
-            profile_views?: number;
-            /** @description Unique users reached */
-            reach?: number;
-            saves?: number;
-            shares?: number;
-            video_views?: number;
-        };
-        PublicationsPublication: {
+        Publication: {
             _id: string;
             /** Format: date-time */
             creation_date: string;
@@ -3613,7 +3794,7 @@ export interface components {
             id_integration?: string;
             id_organization: string;
             /** @description Last known measurement, in the common vocabulary. Absent until it is measured. */
-            metrics?: components["schemas"]["PublicationsNormalizedMetrics"];
+            metrics?: components["schemas"]["NormalizedMetrics"];
             /** @description Internal name. Never shown on the social network. */
             name?: string;
             /** Format: date-time */
@@ -3643,7 +3824,7 @@ export interface components {
              * @enum {string}
              */
             state: "ready" | "withErrors" | "sended" | "draft" | "publishing";
-            statistics?: components["schemas"]["PublicationsPublicationStats"];
+            statistics?: components["schemas"]["PublicationStats"];
             /** Format: date-time */
             stats_updated_date?: string;
             text?: string;
@@ -3686,22 +3867,22 @@ export interface components {
             title?: string;
         };
         PublicationsPublicationList: {
-            publications: components["schemas"]["PublicationsPublication"][];
+            publications: components["schemas"]["Publication"][];
             total: number;
         };
         PublicationsPublicationOne: {
-            publication: components["schemas"]["PublicationsPublication"];
+            publication: components["schemas"]["Publication"];
         };
         PublicationsPublicationRetry: {
             /** @description Retries a failed publication accepts in total. Read it from here instead of hardcoding it: it is the same number the server enforces. */
             max_retries: number;
-            publication: components["schemas"]["PublicationsPublication"];
+            publication: components["schemas"]["Publication"];
         };
         PublicationsPublicationsStatsList: {
             /** @description Metric the listing is ordered by */
             metric?: string;
             /** @description The requested page. Each publication carries its last known `metrics`, `engagement_base` and `stats_updated_date`; a publication that has not been measured yet has none of them. */
-            publications?: components["schemas"]["PublicationsPublication"][];
+            publications?: components["schemas"]["Publication"][];
             /** @description The resolved range and the immediately preceding period of the same length, which is what `summary.previous_total` covers. */
             range?: {
                 /** Format: date-time */
@@ -3716,15 +3897,62 @@ export interface components {
             /** @description Aggregates for the whole organization in the range. Omitted when `summary=false`. */
             summary?: {
                 by_network?: {
-                    metrics?: components["schemas"]["PublicationsNormalizedMetrics"];
+                    metrics?: components["schemas"]["NormalizedMetrics"];
                     publications?: number;
                     social_network?: string;
                 }[];
-                previous_total?: components["schemas"]["PublicationsNormalizedMetrics"];
-                total?: components["schemas"]["PublicationsNormalizedMetrics"];
+                previous_total?: components["schemas"]["NormalizedMetrics"];
+                total?: components["schemas"]["NormalizedMetrics"];
             };
             /** @description Publications matching the filters, for paging */
             total?: number;
+        };
+        /** @description A publication's measured history plus its last known values. */
+        PublicationsPublicationStatsHistory: {
+            /** @enum {string} */
+            engagement_base?: "reach" | "impressions" | "followers";
+            id_publication: string;
+            /** @description The most recent row of the series, with the network's raw payload attached. Absent when the series is empty. */
+            latest?: {
+                /** Format: date-time */
+                collected_date: string;
+                /** @enum {string} */
+                engagement_base?: "reach" | "impressions" | "followers";
+                metrics: components["schemas"]["NormalizedMetrics"];
+                /** @description What the network answered, unprocessed. */
+                raw?: components["schemas"]["PublicationStats"];
+            };
+            metrics?: components["schemas"]["NormalizedMetrics"];
+            /**
+             * Format: date-time
+             * @description When the collector will look again. Absent means the 30-day window is over
+             */
+            next_stats_update?: string;
+            /** Format: date-time */
+            publish_date?: string;
+            /** @description One row per measured day, oldest first. Empty is valid: nothing has been measured yet. */
+            series: components["schemas"]["PublicationsPublicationStatsPoint"][];
+            social_network: components["schemas"]["SocialNetwork"];
+            statistics?: components["schemas"]["PublicationStats"];
+            /**
+             * Format: date-time
+             * @description Last time it was measured. Absent means never
+             */
+            stats_updated_date?: string;
+        };
+        /** @description One measurement of a publication. `metrics` is the **running total** at `collected_date`, not that day's increment. */
+        PublicationsPublicationStatsPoint: {
+            /**
+             * Format: date-time
+             * @description Day of the measurement, normalized to 00:00
+             */
+            collected_date: string;
+            /**
+             * @description What the engagement rate is divided by. Two rows with different bases are not comparable: state the base whenever you put them in the same table.
+             * @enum {string}
+             */
+            engagement_base?: "reach" | "impressions" | "followers";
+            metrics: components["schemas"]["NormalizedMetrics"];
         };
         /**
          * @description Raw, per-network metrics for a publication. Only the fields that belong to the publication's own social network are returned.
@@ -3735,7 +3963,7 @@ export interface components {
          *
          *     On `bluesky` there are no impressions and no reach either — only the public counters — so engagement is computed over followers.
          */
-        PublicationsPublicationStats: {
+        PublicationStats: {
             angers?: number;
             /** @description X (Twitter). Times the post was saved to bookmarks. Always available (`public_metrics`). Normalised as `saves` and counted towards engagement. */
             bookmarks?: number;
@@ -3778,53 +4006,6 @@ export interface components {
             video_views?: number;
             views?: number;
             wows?: number;
-        };
-        /** @description A publication's measured history plus its last known values. */
-        PublicationsPublicationStatsHistory: {
-            /** @enum {string} */
-            engagement_base?: "reach" | "impressions" | "followers";
-            id_publication: string;
-            /** @description The most recent row of the series, with the network's raw payload attached. Absent when the series is empty. */
-            latest?: {
-                /** Format: date-time */
-                collected_date: string;
-                /** @enum {string} */
-                engagement_base?: "reach" | "impressions" | "followers";
-                metrics: components["schemas"]["PublicationsNormalizedMetrics"];
-                /** @description What the network answered, unprocessed. */
-                raw?: components["schemas"]["PublicationsPublicationStats"];
-            };
-            metrics?: components["schemas"]["PublicationsNormalizedMetrics"];
-            /**
-             * Format: date-time
-             * @description When the collector will look again. Absent means the 30-day window is over
-             */
-            next_stats_update?: string;
-            /** Format: date-time */
-            publish_date?: string;
-            /** @description One row per measured day, oldest first. Empty is valid: nothing has been measured yet. */
-            series: components["schemas"]["PublicationsPublicationStatsPoint"][];
-            social_network: components["schemas"]["SocialNetwork"];
-            statistics?: components["schemas"]["PublicationsPublicationStats"];
-            /**
-             * Format: date-time
-             * @description Last time it was measured. Absent means never
-             */
-            stats_updated_date?: string;
-        };
-        /** @description One measurement of a publication. `metrics` is the **running total** at `collected_date`, not that day's increment. */
-        PublicationsPublicationStatsPoint: {
-            /**
-             * Format: date-time
-             * @description Day of the measurement, normalized to 00:00
-             */
-            collected_date: string;
-            /**
-             * @description What the engagement rate is divided by. Two rows with different bases are not comparable: state the base whenever you put them in the same table.
-             * @enum {string}
-             */
-            engagement_base?: "reach" | "impressions" | "followers";
-            metrics: components["schemas"]["PublicationsNormalizedMetrics"];
         };
         /** @description What can be read back about an organization's own application. The secrets are not here and never will be. */
         SocialCredentials: {
@@ -4512,8 +4693,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        client_apps?: components["schemas"]["AppsClientApp"][];
-                        total?: number;
+                        client_apps: components["schemas"]["AppsClientApp"][];
+                        total: number;
                     };
                 };
             };
@@ -4543,7 +4724,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        client_app?: components["schemas"]["AppsClientApp"];
+                        client_app: components["schemas"]["AppsClientApp"];
                     };
                 };
             };
@@ -4571,7 +4752,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        client_app?: components["schemas"]["AppsClientApp"];
+                        client_app: components["schemas"]["AppsClientApp"];
                     };
                 };
             };
@@ -4603,7 +4784,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        client_app?: components["schemas"]["AppsClientApp"];
+                        client_app: components["schemas"]["AppsClientApp"];
                     };
                 };
             };
@@ -4657,7 +4838,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        secret?: string;
+                        secret: string;
                     };
                 };
             };
@@ -5136,10 +5317,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @description AI credits this plan has spent in total, this regeneration included. */
-                        credits_spent?: number;
-                        publication?: {
-                            [key: string]: unknown;
-                        };
+                        credits_spent: number;
+                        publication: components["schemas"]["Publication"];
                     };
                 };
             };
@@ -5758,7 +5937,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        providers?: components["schemas"]["IntegrationsIntegrationProvider"][];
+                        providers: components["schemas"]["IntegrationsIntegrationProvider"][];
                     };
                 };
             };
@@ -6354,9 +6533,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        conversations?: components["schemas"]["MessagesConversation"][];
+                        conversations: components["schemas"]["MessagesConversation"][];
                         /** @description Conversations this account has in total, ignoring the pagination. */
-                        total?: number;
+                        total: number;
                     };
                 };
             };
@@ -6475,10 +6654,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @description Templates as the network returns them. */
-                        templates?: {
+                        templates: {
                             [key: string]: unknown;
                         }[];
-                        total?: number;
+                        total: number;
                     };
                 };
             };
@@ -6512,7 +6691,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        template?: {
+                        template: {
                             [key: string]: unknown;
                         };
                     };
@@ -6606,8 +6785,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        messages?: components["schemas"]["Message"][];
-                        total?: number;
+                        messages: components["schemas"]["Message"][];
+                        total: number;
                     };
                 };
             };
@@ -6641,7 +6820,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        message?: components["schemas"]["Message"];
+                        message: components["schemas"]["Message"];
                     };
                 };
             };
@@ -6866,9 +7045,12 @@ export interface operations {
                 limit?: components["parameters"]["Productslimit"];
                 /** @description Records to skip (pagination) */
                 offset?: components["parameters"]["Productsoffset"];
-                /** @description Catalogue whose products are listed. */
+                /** @description The catalogue to list. **Effectively required**: without it the request fails with `ERROR_CODE_2000`. Get one from `GET .../products_catalogs`. */
                 product_catalog_id?: string;
-                /** @description Ask for one product instead of a page. */
+                /**
+                 * @deprecated
+                 * @description **Do not use: it does not reach the network.** The server forwards it under a different name than the SDK reads, so a request with only `product_id` fails with `ERROR_CODE_2000` ("catalogue or product identifier required"). Ask for the catalogue and pick the product out of the page.
+                 */
                 product_id?: string;
             };
             header?: never;
@@ -6889,9 +7071,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items?: components["schemas"]["ProductsProduct"][];
-                        /** @description How many products came back in this page. */
-                        total?: number;
+                        items: components["schemas"]["ProductsProduct"][];
+                        /** @description **Always 0 today.** It is read from Meta's `summary.total_count`, and PlanVortex does not ask for the summary, so the field never arrives. Page until you get a short page instead of trusting this number. */
+                        total: number;
                     };
                 };
             };
@@ -6926,7 +7108,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        product_id?: string;
+                        product_id: string;
                     };
                 };
             };
@@ -6959,9 +7141,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items?: components["schemas"]["ProductsProductCatalog"][];
-                        /** @description How many catalogues came back in this page. */
-                        total?: number;
+                        items: components["schemas"]["ProductsProductCatalog"][];
+                        /** @description How many catalogues came back **in this page**, not how many exist. It is the length of `items`, so it can never tell you there is another page. */
+                        total: number;
                     };
                 };
             };
@@ -6993,8 +7175,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @description Identifier of the catalogue on the network. */
-                        product_catalog?: string;
+                        /** @description Identifier of the catalogue on the network. **A string, not the catalogue**: the name says otherwise and it is the id. Read it back with `GET .../products_catalogs` if you need the rest. */
+                        product_catalog: string;
                     };
                 };
             };
@@ -7213,7 +7395,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        publications: components["schemas"]["PublicationsPublication"][];
+                        publications: components["schemas"]["Publication"][];
                         total: number;
                     };
                 };
@@ -7331,9 +7513,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        comments?: components["schemas"]["CommentsComment"][];
+                        comments: components["schemas"]["CommentsComment"][];
                         /** @description Rows matching the filters, not rows returned */
-                        total?: number;
+                        total: number;
                     };
                 };
             };
@@ -7370,7 +7552,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        comment?: components["schemas"]["CommentsComment"];
+                        comment: components["schemas"]["CommentsComment"];
                     };
                 };
             };
@@ -7398,7 +7580,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        success?: boolean;
+                        success: boolean;
                     };
                 };
             };
@@ -7464,10 +7646,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        comment?: components["schemas"]["CommentsComment"];
+                        comment: components["schemas"]["CommentsComment"];
                         /** @description X credits this reply spent. `0` on every other network. */
-                        credits_consumed?: number;
-                        reply?: components["schemas"]["CommentsComment"];
+                        credits_consumed: number;
+                        /** @description Your reply as it was stored. **It can arrive without `_id`**: the reply is published on the network first and stored afterwards, and storing it is deliberately not allowed to fail the request — the network already published it. When that write fails you get what the network returned, which has no PlanVortex identifier. `comment.our_reply_external_id` is the field that always identifies it. */
+                        reply: components["schemas"]["CommentsComment"];
                     };
                 };
             };
@@ -7541,7 +7724,10 @@ export interface operations {
                 offset?: components["parameters"]["Contactsoffset"];
                 /** @description Full-text search over the contact's name. */
                 search?: string;
-                /** @description Only the contacts reachable on this network. */
+                /**
+                 * @deprecated
+                 * @description **Do not use: it always returns an empty list.** The server compares the whole `social_identifiers` array against the network name, and the array holds objects, so nothing ever matches. Filter client-side on `social_identifiers[].social_network` until this is fixed.
+                 */
                 social_network?: components["schemas"]["SocialNetwork"];
             };
             header?: never;
@@ -7560,8 +7746,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        contacts?: components["schemas"]["Contact"][];
-                        total?: number;
+                        contacts: components["schemas"]["Contact"][];
+                        total: number;
                     };
                 };
             };
@@ -7580,7 +7766,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ContactsContactInput"];
+                "application/json": components["schemas"]["ContactsContactCreate"];
             };
         };
         responses: {
@@ -7591,7 +7777,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        contact?: components["schemas"]["Contact"];
+                        contact: components["schemas"]["Contact"];
                     };
                 };
             };
@@ -7643,7 +7829,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        contact?: components["schemas"]["Contact"];
+                        contact: components["schemas"]["Contact"];
                     };
                 };
             };
@@ -7664,11 +7850,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ContactsContactInput"];
+                "application/json": components["schemas"]["ContactsContactUpdate"];
             };
         };
         responses: {
-            /** @description Updated */
+            /** @description Updated. **It does not return the contact**: read it again if you need the new state. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7769,6 +7955,7 @@ export interface operations {
     getIntegrations: {
         parameters: {
             query?: {
+                /** @description How many to return. **Without it there is no limit at all** and the whole list comes back — unlike every other listing in this API, which caps at 10. */
                 limit?: number;
                 offset?: number;
                 /** @description Filter by provider */
@@ -7790,8 +7977,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        integrations?: components["schemas"]["IntegrationsIntegration"][];
-                        total?: number;
+                        integrations: components["schemas"]["IntegrationsIntegration"][];
+                        total: number;
                     };
                 };
             };
@@ -7829,7 +8016,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        integration?: components["schemas"]["IntegrationsIntegration"];
+                        integration: components["schemas"]["IntegrationsIntegration"];
                     };
                 };
             };
@@ -7876,7 +8063,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        integration?: components["schemas"]["IntegrationsIntegration"];
+                        integration: components["schemas"]["IntegrationsIntegration"];
                     };
                 };
             };
@@ -7920,7 +8107,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        integration?: components["schemas"]["IntegrationsIntegration"];
+                        integration: components["schemas"]["IntegrationsIntegration"];
                     };
                 };
             };
@@ -7956,7 +8143,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        success?: boolean;
+                        success: boolean;
                     };
                 };
             };
@@ -7992,12 +8179,12 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        access_token?: string;
+                        access_token: string;
                         /** @description Google Cloud project NUMBER. With scope drive.file the permission over a picked file is granted to the project that picked it, so this must belong to the same project as the OAuth client. */
-                        app_id?: string;
-                        developer_key?: string;
+                        app_id: string;
+                        developer_key: string;
                         /** Format: date-time */
-                        expires_in?: string;
+                        expires_in: string;
                     };
                 };
             };
@@ -8037,7 +8224,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        integration?: components["schemas"]["IntegrationsIntegration"];
+                        integration: components["schemas"]["IntegrationsIntegration"];
                     };
                 };
             };
@@ -8086,7 +8273,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @example https://accounts.google.com/o/oauth2/v2/auth?response_type=code&... */
-                        url?: string;
+                        url: string;
                     };
                 };
             };
@@ -8175,9 +8362,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        group_by?: string;
-                        range?: components["schemas"]["DashboardDashboardRange"];
-                        stats?: components["schemas"]["DashboardMetricRow"][];
+                        /**
+                         * @description The axis that was applied. Defaults to `day`; anything else is rejected with 1000.
+                         * @enum {string}
+                         */
+                        group_by: "day" | "network" | "account" | "total";
+                        range: components["schemas"]["DashboardDashboardRange"];
+                        stats: components["schemas"]["DashboardMetricRow"][];
                     };
                 };
             };
@@ -8392,7 +8583,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        range?: components["schemas"]["DashboardDashboardRange"];
+                        range: components["schemas"]["DashboardDashboardRange"];
                     } & components["schemas"]["DashboardPublicationsSummary"];
                 };
             };
@@ -8427,9 +8618,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        metric?: components["schemas"]["DashboardMetricName"];
-                        publications?: components["schemas"]["DashboardTopPublication"][];
-                        range?: components["schemas"]["DashboardDashboardRange"];
+                        metric: components["schemas"]["DashboardMetricName"];
+                        publications: components["schemas"]["DashboardTopPublication"][];
+                        range: components["schemas"]["DashboardDashboardRange"];
                     };
                 };
             };
@@ -8710,7 +8901,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicationsPublicationStats"];
+                    "application/json": components["schemas"]["PublicationStats"];
                 };
             };
             /**
@@ -9567,7 +9758,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        total?: number;
+                        total: number;
                     };
                 };
             };
@@ -9593,7 +9784,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        total?: number;
+                        total: number;
                     };
                 };
             };

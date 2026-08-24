@@ -1,10 +1,11 @@
 /**
  * `PlanVortex`: el objeto que un integrador construye una vez y usa para todo.
  *
- * De la fase 4 tiene el núcleo —transporte, autenticación y errores— y de la 6 el camino de
- * publicar: `pv.catalog`, `pv.clients`, `pv.organizations`, `pv.accounts`, `pv.uploads` y
- * `pv.publications`. Los demás recursos llegan en la fase 7 colgando de este mismo objeto y usando
- * su {@link PlanVortex.request}.
+ * De la fase 4 tiene el núcleo —transporte, autenticación y errores—, de la 6 el camino de publicar
+ * —`pv.catalog`, `pv.clients`, `pv.organizations`, `pv.accounts`, `pv.uploads`, `pv.publications`—
+ * y de la 7 el resto: `pv.comments`, `pv.messages`, `pv.contacts`, `pv.products`,
+ * `pv.integrations`, `pv.aiPlans`, `pv.dashboard` y `pv.apps`. Todos comparten el token, los
+ * reintentos y los hooks porque todos usan su {@link PlanVortex.request}.
  */
 import { ClientCredentialsAuth, StaticTokenAuth } from "./core/auth.js";
 import type { AuthProvider } from "./core/auth.js";
@@ -12,9 +13,17 @@ import { PlanVortexConfigError, isTokenError } from "./core/errors.js";
 import { HttpClient } from "./core/http.js";
 import type { FetchLike, HttpHooks, HttpRequest, HttpResponse, RetryConfig } from "./core/http.js";
 import { AccountsResource } from "./resources/accounts.js";
+import { AiPlansResource } from "./resources/ai_plans.js";
+import { AppsResource } from "./resources/apps.js";
 import { CatalogResource } from "./resources/catalog.js";
+import { CommentsResource } from "./resources/comments.js";
+import { ContactsResource } from "./resources/contacts.js";
+import { DashboardResource } from "./resources/dashboard.js";
+import { IntegrationsResource } from "./resources/integrations.js";
+import { MessagesResource } from "./resources/messages.js";
 import { ClientsResource } from "./resources/clients.js";
 import { OrganizationsResource } from "./resources/organizations.js";
+import { ProductsResource } from "./resources/products.js";
 import { PublicationsResource } from "./resources/publications.js";
 import { UploadsResource } from "./resources/uploads.js";
 import { PLANVORTEX_API_URL, VERSION } from "./version.js";
@@ -83,6 +92,22 @@ export class PlanVortex {
     readonly uploads: UploadsResource;
     /** Publicaciones: crear, programar, reintentar y medir. */
     readonly publications: PublicationsResource;
+    /** Comentarios y reseñas: la bandeja, el hilo en vivo y la moderación. */
+    readonly comments: CommentsResource;
+    /** El buzón privado: conversaciones, mensajes y plantillas. Sólo en las redes con chat. */
+    readonly messages: MessagesResource;
+    /** La agenda: la gente con la que se cruzan mensajes. */
+    readonly contacts: ContactsResource;
+    /** Catálogos de Meta Commerce. Sólo Facebook e Instagram. */
+    readonly products: ProductsResource;
+    /** Google Drive y RSS: de dónde saca material la organización. */
+    readonly integrations: IntegrationsResource;
+    /** Planes de publicaciones generados con IA. */
+    readonly aiPlans: AiPlansResource;
+    /** Los números: agregados, rankings y consumo del plan. */
+    readonly dashboard: DashboardResource;
+    /** Apps de cliente. Casi todo exige token de usuario, no de app. */
+    readonly apps: AppsResource;
 
     private readonly http: HttpClient;
     private readonly auth: AuthProvider;
@@ -138,6 +163,14 @@ export class PlanVortex {
         this.accounts = new AccountsResource(this);
         this.uploads = new UploadsResource(this);
         this.publications = new PublicationsResource(this);
+        this.comments = new CommentsResource(this, this.catalog);
+        this.messages = new MessagesResource(this);
+        this.contacts = new ContactsResource(this);
+        this.products = new ProductsResource(this);
+        this.integrations = new IntegrationsResource(this);
+        this.aiPlans = new AiPlansResource(this);
+        this.dashboard = new DashboardResource(this);
+        this.apps = new AppsResource(this);
     }
 
     /**

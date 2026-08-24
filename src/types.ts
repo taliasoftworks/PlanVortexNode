@@ -4,9 +4,11 @@
  * Debajo de cada uno esta `src/generated/openapi.d.ts`, que sale del OpenAPI publico y no se toca
  * a mano. Este fichero es la capa fina que hay encima y hace tres cosas que un generador no puede:
  *
- *  1. **Pone nombres legibles.** En lo generado un esquema se llama `PublicationsPublication`,
+ *  1. **Pone nombres legibles.** En lo generado un esquema se llama `PublicationsPublicationInput`,
  *     porque los 16 documentos del spec se unen en uno y el `Plan` de un cliente no es el `Plan`
- *     de una organizacion. Aqui se llama `Publication`.
+ *     de una organizacion. Aqui se llama `PublicationInput`. Los que describen LO MISMO en varias
+ *     secciones viven en `common.json` y conservan su nombre —`Publication`, `Account`, `Upload`,
+ *     `Message`, `Contact`, `NormalizedMetrics`—: es lo que evita dos tipos para un solo objeto.
  *  2. **Abre las enumeraciones que crecen** (§ trampa 8 del roadmap). `ALLOWED_RRSS` va por diez
  *     redes y sube varias veces al ano. Si `social_network` fuera una union cerrada, el dia que
  *     entre la undecima **dejaria de compilar el codigo de todos los integradores** hasta que
@@ -95,10 +97,10 @@ export type CommentNetwork = OpenEnum<Schemas["CommentsCommentNetworkName"]>;
  * `draft` no se envia nunca; `ready` esta programada; `publishing` esta en manos de la red en este
  * momento; `sended` salio; `withErrors` fallo y trae el motivo en `publication_errors`.
  */
-export type PublicationState = OpenEnum<Schemas["PublicationsPublication"]["state"]>;
+export type PublicationState = OpenEnum<Schemas["Publication"]["state"]>;
 
 /** Donde se publica dentro de la red: perfil, pagina, grupo, reel o story. */
-export type PublicationType = OpenEnum<Schemas["PublicationsPublication"]["publication_type"]>;
+export type PublicationType = OpenEnum<Schemas["Publication"]["publication_type"]>;
 
 /** `image` o `video`. Abierto porque el catalogo de formatos se ha ampliado antes (HEIC). */
 export type FileType = OpenEnum<Schemas["Upload"]["file_type"]>;
@@ -197,6 +199,24 @@ export type AiContext = Schemas["AiContext"];
 
 /** Las credenciales de la aplicacion propia de una organizacion (BYOB). Los secretos nunca salen. */
 export type SocialCredentials = Schemas["SocialCredentials"];
+
+/**
+ * Las credenciales tal y como se MANDAN. Son de solo escritura: nada de lo que va aqui vuelve.
+ *
+ * Las tres hacen falta la primera vez; despues, lo que se omite se conserva.
+ */
+export type SocialCredentialsInput = Schemas["OrganizationsSocialCredentialsInput"];
+
+/**
+ * La configuracion de proveedores de IA de un cliente (BYOK), ambito a ambito.
+ *
+ * Un ambito en `null` borra su configuracion y devuelve ese ambito a los creditos de PlanVortex.
+ */
+export type AiSettings = Schemas["ClientsAiSettings"];
+
+/** Un cliente con sus organizaciones raiz dentro. Es el atajo del arranque: 1 peticion en vez de N. */
+export type ClientWithOrganizations =
+    Operations["getClientsWithOrganizations"]["responses"][200]["content"]["application/json"]["clients"][number];
 
 // ---------------------------------------------------------------------------------------------
 // Recursos
@@ -309,7 +329,7 @@ export type FileProperties = Schemas["FileProperties"];
  * es un codigo del catalogo de PlanVortex, nunca un status HTTP.
  */
 export type Publication = Override<
-    Schemas["PublicationsPublication"],
+    Schemas["Publication"],
     {
         social_network: SocialNetwork;
         state: PublicationState;
@@ -348,10 +368,10 @@ export type PublicationInput = Override<
 >;
 
 /** El desglose crudo de metricas que da la red, que no es el mismo en dos redes cualesquiera. */
-export type PublicationStats = Schemas["PublicationsPublicationStats"];
+export type PublicationStats = Schemas["PublicationStats"];
 
 /** Las metricas comparables entre redes: las que se pueden sumar en una grafica. */
-export type PublicationMetrics = Schemas["PublicationsNormalizedMetrics"];
+export type PublicationMetrics = Schemas["NormalizedMetrics"];
 
 /** La serie historica de una publicacion, mas su ultima medicion. */
 export type PublicationStatsHistory = Override<
@@ -373,23 +393,101 @@ export type PublicationStatsPoint = Override<
 /**
  * Un comentario, o una resena de Google Business.
  *
- * `id_publication` **falta** cuando el comentario cuelga de una ficha y no de una publicacion
- * nuestra, que es justo el caso de Google Business: ahi `publication_external_id` es la ficha
- * (`locations/{id}`). `rating` solo llega donde se valora con estrellas, y una resena puede venir
- * sin texto ninguno. De lo nuestro solo son `read` y `replied`: todo lo demas lo manda la red.
+ * TRES COSAS QUE SORPRENDEN, las tres comprobadas contra el servidor en la fase 7:
+ *
+ *  - **`id_publication` falta** cuando el comentario no cuelga de una publicacion nuestra, y eso
+ *    no es raro: la resena de Google Business cuelga de la FICHA (ahi `publication_external_id`
+ *    es `locations/{id}`), y un video subido a mano al canal o un post anterior a PlanVortex
+ *    tambien reciben comentarios. Lo que identifica siempre es `publication_external_id`.
+ *  - **`id_account` e `id_publication` cambian de forma segun la operacion**: LA BANDEJA los
+ *    devuelve poblados —el objeto entero— y todo lo demas —los hilos en vivo, responder,
+ *    actualizar— como cadena. Es la misma asimetria que `Publication.id_account` y se tapa igual,
+ *    con {@link accountId} / {@link account} y {@link publicationId} / {@link publication}.
+ *  - **`text` puede venir vacio y no es un fallo**: una resena de solo estrellas no lleva texto,
+ *    asi que se pinta el `rating` al lado en vez de dar la fila por rota.
+ *
+ * De lo nuestro solo son `read` y `replied`. Todo lo demas lo manda la red, y una lectura en vivo
+ * pisa lo guardado.
  */
 export type Comment = Override<
     Schemas["CommentsComment"],
     {
         social_network: CommentNetwork;
+        //Se reescriben con NUESTROS `Account` y `Publication`, los de las enumeraciones abiertas,
+        //por lo mismo que en `Publication.id_account`: con los generados, un comentario de una red
+        //que este paquete todavia no conozca no encajaria aqui.
+        id_account: string | Account;
+        id_publication: string | Publication;
     }
 >;
 
 /** Quien escribio un comentario. `is_own` distingue el nuestro del de un tercero. */
 export type CommentAuthor = Schemas["CommentsCommentAuthor"];
 
-/** Una conversacion de mensajeria con un contacto. */
-export type Conversation = Schemas["MessagesConversation"];
+/**
+ * Un hilo LEIDO EN VIVO: lo que la red dice ahora mismo, ya reconciliado con lo guardado.
+ *
+ * DOS COSAS: `credits_consumed` es dinero de verdad y solo en X —un credito por respuesta
+ * devuelta, `0` en las demas redes—, y `next_cursor` es el token opaco de la red, que se devuelve
+ * TAL CUAL como `offset` en la llamada siguiente. Que falte significa que no hay mas paginas.
+ */
+export type CommentThread = Override<Schemas["CommentsCommentThread"], { comments: Comment[] }>;
+
+/**
+ * Lo que devuelve responder a un comentario: el comentario ya marcado como respondido, la
+ * respuesta, y lo que costo.
+ *
+ * **`reply` puede llegar SIN `_id`.** La respuesta se publica primero en la red y se guarda
+ * despues, y guardarla no puede tumbar la peticion —la red ya la publico—, asi que cuando esa
+ * escritura falla lo que llega es lo que devolvio la red, sin identificador de PlanVortex. El
+ * campo que la identifica siempre es `comment.our_reply_external_id`.
+ */
+export interface CommentReplyResult {
+    comment: Comment;
+    reply: Comment;
+    credits_consumed: number;
+}
+
+/**
+ * Una conversacion: un contacto, cuando escribio por ultima vez y cuantos mensajes suyos quedan
+ * sin leer.
+ *
+ * No tiene `_id` propio —sale de una agregacion que lo proyecta fuera— porque la conversacion no
+ * es una entidad: lo que existe son los mensajes con ese contacto. El identificador con el que se
+ * abre el hilo es `conversation.contact._id`.
+ */
+export type Conversation = Override<Schemas["MessagesConversation"], { contact: Contact }>;
+
+/**
+ * Cuantas conversaciones hubo en un rango. Son DOS respuestas distintas, no una con campos de mas:
+ * sin `group_by` llega `{total}` y con el llega `{stats, group}`.
+ *
+ * OJO CON `groupValue`: es el NUMERO que dan `$dayOfYear`, `$month` o `$year` de Mongo —240, 8,
+ * 2026—, no una fecha. Con `group_by: "day"` dos anos del mismo rango caen en el mismo valor.
+ */
+export type ConversationTotals = Schemas["MessagesConversationTotals"];
+
+/**
+ * Lo que se manda para escribir un mensaje.
+ *
+ * `comment_message` y `publication_message` estan en {@link MessageType} pero **no se pueden
+ * enviar por aqui**: las dos necesitan el identificador de lo que responden y el endpoint no lo lee
+ * del cuerpo, asi que el mensaje saldria sin destinatario.
+ */
+export type MessageInput = Override<
+    Schemas["MessagesMessageInput"],
+    { message_options: Partial<MessageOptions> }
+>;
+
+/**
+ * Una plantilla de mensaje, **en el formato de la red**: `name`, `status`, `components` y
+ * `language` de Meta.
+ *
+ * No se traduce a un tipo nuestro a proposito. La plantilla que hay que nombrar al enviar
+ * (`message_options.template_name`) es la de la red, asi que inventar aqui otra forma obligaria a
+ * traducir de vuelta en el unico sitio donde se usa. Y es de WhatsApp y de nadie mas.
+ */
+export type MessageTemplate = Record<string, unknown>;
 
 /**
  * Un mensaje intercambiado con un contacto.
@@ -410,10 +508,7 @@ export type Message = Override<Schemas["Message"], { message_options: MessageOpt
  * formatos abiertos— y no el generado: si no, un fichero de un mensaje y uno de una publicacion
  * serian dos tipos distintos para el mismo objeto del servidor.
  */
-export type MessageOptions = Override<
-    Schemas["MessageOptions"],
-    { files: (string | Upload)[] }
->;
+export type MessageOptions = Override<Schemas["MessageOptions"], { files: (string | Upload)[] }>;
 
 /** Que clase de mensaje es. `simple_message` y `file_message` valen en todas las redes. */
 export type MessageType = Schemas["MessageType"];
@@ -421,23 +516,209 @@ export type MessageType = Schemas["MessageType"];
 /** Un contacto de la agenda de la organizacion. */
 export type Contact = Schemas["Contact"];
 
+/**
+ * Lo que se manda para dar de alta un contacto.
+ *
+ * `social_identifiers` NO es opcional: un contacto sin canal es un contacto al que nadie puede
+ * escribir, y el servidor lo rechaza con el error 1601.
+ */
+export type ContactCreate = Schemas["ContactsContactCreate"];
+
+/**
+ * Lo que se manda para cambiar un contacto.
+ *
+ * **`extra_data` es destructivo**: es el unico campo que el servidor escribe con lo que llegue en
+ * vez de conservarlo, asi que omitirlo BORRA los campos propios del contacto. Los otros tres se
+ * respetan cuando no viajan.
+ */
+export type ContactUpdate = Schemas["ContactsContactUpdate"];
+
+/** Los campos propios de un contacto: el bloque de direccion y las seis propiedades libres. */
+export type ContactExtraData = Schemas["ContactExtraData"];
+
 /** El mismo contacto, en un canal. Es una red social o `email`. */
 export type SocialIdentifier = Schemas["SocialIdentifier"];
+
+/**
+ * El mismo, tal y como se MANDA: aqui `_id` es opcional y el servidor pone uno.
+ *
+ * Son dos tipos y no uno porque el que vuelve siempre trae `_id` y el que se manda casi nunca lo
+ * lleva; con un solo tipo, o se exige un identificador que aun no existe o se deja de garantizar
+ * el que si.
+ */
+export type SocialIdentifierInput = Schemas["ContactsSocialIdentifierInput"];
 
 /** Donde se puede alcanzar a un contacto: cualquier red con mensajeria, o `email`. */
 export type ContactChannel = OpenEnum<Schemas["ContactChannel"]>;
 
-/** Un producto del catalogo de una cuenta (solo en las redes que venden). */
+/**
+ * Un producto de un catalogo de Meta Commerce. Solo Facebook e Instagram.
+ *
+ * Habla el vocabulario de Meta y no uno nuestro, a diferencia de las estadisticas: lo que hay aqui
+ * son los campos de la Graph API, con sus nombres.
+ */
 export type Product = Schemas["ProductsProduct"];
 
-/** Una conexion con una herramienta de la que se traen materiales: Google Drive, un RSS. */
+/** Lo que se manda para crear un producto. Con `id` dentro, ACTUALIZA el que ya existe. */
+export type ProductInput = Schemas["ProductsProductInput"];
+
+/** Un catalogo de Meta Commerce: lo que agrupa productos y de donde cuelga todo lo demas. */
+export type ProductCatalog = Schemas["ProductsProductCatalog"];
+
+/** Lo que se manda para crear un catalogo. */
+export type ProductCatalogInput = Schemas["ProductsProductCatalogInput"];
+
+/**
+ * Una conexion de una ORGANIZACION con una herramienta de la que se trae material: Google Drive,
+ * un feed RSS.
+ *
+ * No confundir con una **app** ({@link ClientApp}), que es el acceso al API de PlanVortex. Son dos
+ * cosas distintas que media web ha llamado igual.
+ *
+ * Las credenciales no salen nunca: para saber si la conexion esta viva esta `connected`, y el
+ * motivo cuando no lo esta, en `error_code`.
+ */
 export type Integration = Schemas["IntegrationsIntegration"];
 
-/** Un plan de publicaciones generado con IA. */
+/** Que sabe hacer un proveedor y que campos lleva su formulario. Es lo que decide como conectar. */
+export type IntegrationProvider = Schemas["IntegrationsIntegrationProvider"];
+
+/** Un proveedor soportado. Abierto porque la lista crece. */
+export type IntegrationProviderName = OpenEnum<Schemas["IntegrationsIntegrationProviderName"]>;
+
+/** La configuracion de un feed RSS. En Google Drive el `config` es un objeto vacio. */
+export type RssConfig = Schemas["IntegrationsRssConfig"];
+
+/**
+ * Lo que se manda para conectar o reconectar. Son dos formas y las distingue `provider`: con OAuth
+ * viaja el `code`, y sin el, el formulario de `config_fields`.
+ */
+export type IntegrationConnectRequest =
+    Schemas["IntegrationsGoogleDriveConnectRequest"] | Schemas["IntegrationsRssConnectRequest"];
+
+/** Lo que se puede cambiar de una integracion ya conectada. */
+export type IntegrationUpdate = Operations["updateIntegration"]["requestBody"]["content"]["application/json"];
+
+/**
+ * Lo que el navegador necesita para abrir el Picker de Google. **Lleva un token vivo**: se pide
+ * justo antes de abrirlo y no se guarda en ningun sitio.
+ */
+export type IntegrationPickerConfig =
+    Operations["getIntegrationPickerConfig"]["responses"][200]["content"]["application/json"];
+
+/**
+ * Un plan de publicaciones generado con IA.
+ *
+ * **`publications` cambia de forma segun la operacion**, como `Publication.id_account`: leer un
+ * plan lo devuelve con las publicaciones enteras y sus ficheros, y el LISTADO devuelve sus
+ * identificadores. `organization_context` es una FOTO del contexto de marca de la organizacion en
+ * el momento de crear el plan, no el de ahora: es lo que hace que un reintento sea reproducible.
+ */
 export type AiPlan = Schemas["AiPlansAiPlan"];
+
+/** El estado de un plan. `pending` y `generating` son los dos que hay que sondear. */
+export type AiPlanState = OpenEnum<AiPlan["state"]>;
+
+/** Las opciones con las que se genero un plan, ya normalizadas. */
+export type AiPlanOptions = Schemas["AiPlansAiPlanOptions"];
+
+/** Las opciones tal y como se MANDAN: todas opcionales, los defaults los pone el servidor. */
+export type AiPlanOptionsInput = Schemas["AiPlansAiPlanOptionsInput"];
+
+/** Lo que se manda para encolar un plan. */
+export type AiPlanCreateRequest = Schemas["AiPlansAiPlanCreateRequest"];
+
+/**
+ * El presupuesto DETERMINISTA de un plan, calculado por el servidor y nunca por el modelo.
+ *
+ * `base_cost` es lo imprescindible —orquestacion y textos—: si no cabe en `available_credits`, el
+ * plan se rechaza en vez de generarse a medias. `estimated_cost` incluye ademas las imagenes
+ * financiables y es una cota superior.
+ */
+export type AiPlanCostEstimate = Schemas["AiPlansAiPlanCostEstimate"];
+
+/** Lo que devuelve encolar un plan: el plan en `pending` y lo que se calculo que costaria. */
+export type AiPlanCreateResult = Schemas["AiPlansAiPlanCreateResponse"];
 
 /** Una app de cliente: las credenciales con las que una integracion se autentica. */
 export type ClientApp = Schemas["AppsClientApp"];
+
+/** Lo que se manda para crear o actualizar una app. Al actualizar, REEMPLAZA los cinco campos. */
+export type ClientAppInput = Schemas["AppsClientAppInput"];
+
+// ---------------------------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * El rango que se aplico y el periodo anterior con el que se compara, de la MISMA longitud.
+ *
+ * No es "el mes pasado": comparar 30 dias contra un mes natural moveria el delta con el calendario.
+ */
+export type DashboardRange = Schemas["DashboardDashboardRange"];
+
+/**
+ * Una metrica del vocabulario COMUN, la que se puede sumar entre redes.
+ *
+ * Cerrada a proposito, al reves que {@link SocialNetwork}: no es una lista que crezca sola con cada
+ * red nueva, es la traduccion que hace comparables a todas. Un nombre que no este aqui es un nombre
+ * crudo de una red y no se puede sumar con nada.
+ */
+export type MetricName = Schemas["DashboardMetricName"];
+
+/**
+ * Una fila agregada de metricas de cuenta.
+ *
+ * `group` es el valor del eje —el dia, la red, el identificador de cuenta— y **es `null` cuando se
+ * agrupo por `total`**: el campo viaja siempre, el valor no siempre es una cadena.
+ */
+export type MetricRow = Schemas["DashboardMetricRow"];
+
+/** Lo que devuelve {@link DashboardResource.metrics}. */
+export type DashboardMetricsResult =
+    Operations["getOrganizationMetrics"]["responses"][200]["content"]["application/json"];
+
+/** Los conteos de publicaciones de un rango. */
+export type PublicationsSummary = Schemas["DashboardPublicationsSummary"];
+
+/** Lo que devuelve {@link DashboardResource.publications}: el rango mas los conteos. */
+export type PublicationsSummaryResult =
+    Operations["getPublicationsSummary"]["responses"][200]["content"]["application/json"];
+
+/**
+ * Una fila del ranking. **No tiene la forma de una `Publication`**: sale de la agregacion de
+ * estadisticas, asi que el identificador es `id_publication` y el contenido viaja anidado en
+ * `publication`.
+ */
+export type TopPublication = Schemas["DashboardTopPublication"];
+
+/** Lo que devuelve {@link DashboardResource.topPublications}. */
+export type TopPublicationsResult =
+    Operations["getTopPublications"]["responses"][200]["content"]["application/json"];
+
+/** Lo que devuelve {@link DashboardResource.publicationStats}: los agregados y la pagina. */
+export type PublicationsStatsResult = Schemas["PublicationsPublicationsStatsList"];
+
+/** Lo que gasta una organizacion, lo que ha repartido entre sus hijas, y lo que tiene. */
+export type PlanUse = Schemas["DashboardPlanUse"];
+
+/** Una cuenta rota: token caducado o permiso revocado. Ni publica ni mide hasta reconectarla. */
+export type AccountWithError = Schemas["DashboardAccountWithError"];
+
+/** Una publicacion tal y como la PROYECTA el bloque de salud: cuatro campos, no una `Publication`. */
+export type DashboardPublicationRef = Schemas["DashboardDashboardPublicationRef"];
+
+/** El ultimo plan de IA, proyectado, tal y como lo devuelve el bloque de planes. */
+export type DashboardAiPlanRef = Schemas["DashboardDashboardAiPlanRef"];
+
+/**
+ * La pantalla de inicio entera.
+ *
+ * **Un bloque que falta no es un error**: cada uno se comprueba contra su propio permiso y se omite
+ * si quien llama no puede leerlo, en vez de tumbar la peticion. `available_blocks` dice cuales se
+ * permitieron; uno en `true` que no viene es que no habia datos.
+ */
+export type Dashboard = Schemas["DashboardDashboard"];
 
 /**
  * Los cambios que se entregan a la url de webhook de una app NO se tipan aqui.
@@ -453,25 +734,59 @@ export type ClientApp = Schemas["AppsClientApp"];
 // Ayudas para los campos que la API devuelve de dos formas
 // ---------------------------------------------------------------------------------------------
 
+/** Cualquier cosa que la API devuelve unas veces poblada y otras como identificador. */
+export interface WithAccount {
+    id_account: string | Account;
+}
+
+/** Lo mismo con la publicacion: hoy, un comentario de la bandeja. */
+export interface WithPublication {
+    id_publication?: string | Publication | undefined;
+}
+
 /**
- * El identificador de la cuenta de una publicacion, venga poblada o no.
+ * El identificador de la cuenta de una publicacion O de un comentario, venga poblada o no.
  *
- * `id_account` llega resuelto en las operaciones de una sola publicacion y como cadena en el
- * listado (§ el aviso de {@link Publication}). Esto lo tapa sin obligar a escribir el `typeof` en
- * cada sitio.
+ * `id_account` llega resuelto en unas operaciones y como cadena en otras —en publicaciones, las
+ * de una sola frente al listado; en comentarios, justo al reves— y esto lo tapa sin obligar a
+ * escribir el `typeof` en cada sitio (§ los avisos de {@link Publication} y {@link Comment}).
  */
-export function accountId(publication: Pick<Publication, "id_account">): string {
-    const value = publication.id_account;
+export function accountId(resource: WithAccount): string {
+    const value = resource.id_account;
     return typeof value === "string" ? value : value._id;
 }
 
 /**
- * La cuenta de una publicacion cuando viene poblada, y `undefined` cuando la API solo mando el
- * identificador. Contrapartida de {@link accountId}.
+ * La cuenta cuando viene poblada, y `undefined` cuando la API solo mando el identificador.
+ * Contrapartida de {@link accountId}.
  */
-export function account(publication: Pick<Publication, "id_account">): Account | undefined {
-    const value = publication.id_account;
+export function account(resource: WithAccount): Account | undefined {
+    const value = resource.id_account;
     return typeof value === "string" ? undefined : value;
+}
+
+/**
+ * El identificador de la publicacion de un comentario, venga poblada o no.
+ *
+ * Devuelve `undefined` en los dos casos en los que de verdad no hay ninguna: la resena que cuelga
+ * de una ficha de Google Business y el post que no se publico desde PlanVortex.
+ */
+export function publicationId(resource: WithPublication): string | undefined {
+    const value = resource.id_publication;
+    if (value === undefined) {
+        return undefined;
+    }
+    return typeof value === "string" ? value : value._id;
+}
+
+/**
+ * La publicacion cuando viene poblada —solo la bandeja de comentarios la resuelve—, y
+ * `undefined` cuando la API mando el identificador o cuando no hay publicacion detras.
+ * Contrapartida de {@link publicationId}.
+ */
+export function publication(resource: WithPublication): Publication | undefined {
+    const value = resource.id_publication;
+    return value === undefined || typeof value === "string" ? undefined : value;
 }
 
 /**

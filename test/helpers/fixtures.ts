@@ -5,13 +5,23 @@
  * `src/domain/**` de PlanVortexServer. Un fixture que se invente un campo convierte los tests de
  * contrato en tests de sí mismos.
  */
-import type { Account, Organization, Publication, Upload } from "../../src/index.js";
+import type {
+    Account,
+    Comment,
+    Contact,
+    Message,
+    Organization,
+    Publication,
+    Upload,
+} from "../../src/index.js";
 
 export const ORG_ID = "66d04a6a427f4c43b9d97f00";
 export const CLIENT_ID = "66d04a6a427f4c43b9d97f01";
 export const ACCOUNT_ID = "66d04a6a427f4c43b9d97f54";
 export const UPLOAD_ID = "66d04a6a427f4c43b9d97f55";
 export const PUBLICATION_ID = "66d04a6a427f4c43b9d97f60";
+export const COMMENT_ID = "66d04a6a427f4c43b9d97f70";
+export const CONTACT_ID = "66d04a6a427f4c43b9d97f80";
 
 export const account: Account = {
     _id: ACCOUNT_ID,
@@ -85,4 +95,70 @@ export const planData = {
     artificial_inteligence: true,
     whatsapp: false,
     stats: true,
+};
+
+/**
+ * Un comentario tal y como sale de un HILO EN VIVO o de un webhook: `id_account` como cadena.
+ *
+ * Los cuatro booleanos y las dos fechas van siempre —son `default` del modelo, no campos que la
+ * red pueda no mandar—, y por eso el spec los declara `required` desde la fase 7.
+ */
+export const comment: Comment = {
+    _id: COMMENT_ID,
+    id_account: ACCOUNT_ID,
+    id_organization: ORG_ID,
+    publication_external_id: "17900000000000000",
+    external_id: "17800000000000001",
+    social_network: "instagram",
+    author: { external_id: "9988776655", name: "un_seguidor", is_own: false },
+    text: "Me interesa, ¿cuánto cuesta?",
+    creation_date: "2026-08-21T18:00:00.000Z",
+    collected_date: "2026-08-21T18:05:00.000Z",
+    read: false,
+    replied: false,
+    hidden: false,
+    deleted: false,
+};
+
+/**
+ * El mismo comentario como lo devuelve LA BANDEJA, que es la única que puebla las dos referencias.
+ * Es la asimetría inversa a la de `Publication.id_account`, y por eso hay dos fixtures.
+ */
+export const inboxComment: Comment = {
+    ...comment,
+    id_account: account,
+    id_publication: publication,
+};
+
+/** Un contacto de la agenda, con su identificador de WhatsApp. */
+export const contact: Contact = {
+    _id: CONTACT_ID,
+    id_organization: ORG_ID,
+    name: "Marta",
+    social_identifiers: [
+        {
+            _id: "66d04a6a427f4c43b9d97f81",
+            social_network: "whatsapp",
+            external_identifier: "34600111222",
+            last_send_date: "2026-08-21T17:40:00.000Z",
+        },
+    ],
+    creation_date: "2026-08-10T12:00:00.000Z",
+    last_contact_update: "2026-08-21T17:40:00.000Z",
+};
+
+/**
+ * Un mensaje SALIENTE: lleva `contact_id` y no `from_contact_id`. El servidor garantiza que viene
+ * exactamente uno de los dos, y de ahí sale la dirección.
+ */
+export const message: Message = {
+    _id: "66d04a6a427f4c43b9d97f90",
+    id_account: ACCOUNT_ID,
+    contact_id: CONTACT_ID,
+    read: false,
+    text: "Abrimos de 9 a 14",
+    message_type: "simple_message",
+    message_options: { files: [], files_urls: [] },
+    message_errors: [],
+    creation_date: "2026-08-21T18:10:00.000Z",
 };

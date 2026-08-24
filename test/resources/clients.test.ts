@@ -145,3 +145,83 @@ describe("organizations", () => {
         expect(remove[0]?.method).toBe("DELETE");
     });
 });
+
+/**
+ * Las tres rutas que la fase 6 no llegó a exponer y cierra la 7: la configuración de IA del
+ * cliente, el atajo de arranque y las credenciales propias de una red.
+ */
+describe("lo que faltaba del cliente y la organización", () => {
+    it("updateAiSettings manda los ámbitos y un null borra el suyo", async () => {
+        const calls = api.mock("put", `/clients/${CLIENT_ID}/ai-settings`, { client });
+        const pv = api.client();
+
+        await pv.clients.updateAiSettings(CLIENT_ID, {
+            text: { provider: "openai", api_key: "sk-...", model: "gpt-4o" },
+            image: null,
+        });
+
+        expect(calls[0]?.body).toEqual({
+            text: { provider: "openai", api_key: "sk-...", model: "gpt-4o" },
+            image: null,
+        });
+    });
+
+    /** El atajo del arranque: cada cliente trae dentro sus organizaciones raíz y su propio total. */
+    it("withOrganizations trae las organizaciones dentro de cada cliente", async () => {
+        api.mock("get", "/clients_organizations", {
+            clients: [{ ...client, organizations: [organization], total: 1 }],
+            total: 1,
+        });
+        const pv = api.client();
+
+        const page = await pv.clients.withOrganizations();
+
+        expect(page.data[0]?.organizations[0]?._id).toBe(ORG_ID);
+        //Dos `total` distintos: el del cliente cuenta sus organizaciones, el de fuera, los clientes.
+        expect(page.data[0]?.total).toBe(1);
+        expect(page.total).toBe(1);
+    });
+
+    it("updateAiContext reemplaza el bloque y devuelve la organización", async () => {
+        const calls = api.mock("put", `/organizations/${ORG_ID}/ai-context`, { organization });
+        const pv = api.client();
+
+        await pv.organizations.updateAiContext(ORG_ID, { default_tone: "cercano, sin tecnicismos" });
+
+        expect(calls[0]?.body).toEqual({ default_tone: "cercano, sin tecnicismos" });
+    });
+
+    /** BYOB: se mandan las credenciales de la app de Discord del cliente y no vuelve ni una. */
+    it("updateSocialCredentials manda los secretos y la respuesta no los devuelve", async () => {
+        const calls = api.mock(`put`, `/organizations/${ORG_ID}/social_credentials/discord`, {
+            organization: { ...organization, social_credentials: { discord: { client_id: "12345" } } },
+        });
+        const pv = api.client();
+
+        const updated = await pv.organizations.updateSocialCredentials(ORG_ID, "discord", {
+            client_id: "12345",
+            client_secret: "s3cr3t",
+            bot_token: "MTIz.abc",
+        });
+
+        expect(calls[0]?.body).toEqual({
+            client_id: "12345",
+            client_secret: "s3cr3t",
+            bot_token: "MTIz.abc",
+        });
+        expect(updated.social_credentials?.discord).not.toHaveProperty("client_secret");
+        expect(updated.social_credentials?.discord).not.toHaveProperty("bot_token");
+    });
+
+    it("deleteSocialCredentials devuelve la organización, no un {success}", async () => {
+        const calls = api.mock("delete", `/organizations/${ORG_ID}/social_credentials/discord`, {
+            organization,
+        });
+        const pv = api.client();
+
+        const updated = await pv.organizations.deleteSocialCredentials(ORG_ID, "discord");
+
+        expect(calls[0]?.method).toBe("DELETE");
+        expect(updated._id).toBe(ORG_ID);
+    });
+});

@@ -9,8 +9,16 @@
 import { Resource, requireId } from "./base.js";
 import type { RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
-import { iteratePages } from "../core/pagination.js";
-import type { ConnectToken, Organization, Paginated, PlanData, SocialNetwork } from "../types.js";
+import { iteratePages, unwrapOne } from "../core/pagination.js";
+import type {
+    AiContext,
+    ConnectToken,
+    Organization,
+    Paginated,
+    PlanData,
+    SocialCredentialsInput,
+    SocialNetwork,
+} from "../types.js";
 import type { OrganizationInput } from "./clients.js";
 
 export interface OrganizationOptions extends RequestOptions {
@@ -175,5 +183,74 @@ export class OrganizationsResource extends Resource {
             { social_network: options.social_network, redirect_uri: options.redirect_uri },
             options,
         );
+    }
+    /**
+     * Escribe el contexto de marca que la IA usa al redactar para esta organización.
+     *
+     * Es un REEMPLAZO del bloque entero, no un parcheo campo a campo. Y no afecta a los planes ya
+     * creados: cada plan se lleva una copia del contexto en el momento de pedirlo, para que un
+     * reintento genere lo mismo.
+     */
+    async updateAiContext(
+        idOrganization: string,
+        body: AiContext,
+        options: RequestOptions = {},
+    ): Promise<Organization> {
+        return this.putOne<Organization>(
+            `/organizations/${requireId(idOrganization, "idOrganization")}/ai-context`,
+            "organization",
+            body,
+            options,
+        );
+    }
+
+    /**
+     * Guarda las credenciales de la aplicación PROPIA de la organización para una red (BYOB).
+     *
+     * Hoy sólo Discord: sin esto, Discord ni siquiera aparece como red conectable (error 960). El
+     * motivo de que la aplicación sea del cliente y no nuestra no es técnico — es que el permiso
+     * para leer el TEXTO de los mensajes se revisa por aplicación en cuanto se pasa de 10.000
+     * usuarios alcanzables, y una app compartida arrastraría a toda la plataforma a esa revisión.
+     *
+     * **Los secretos son de sólo escritura y no vuelven nunca.** Las tres credenciales hacen falta
+     * la primera vez; después, lo que se omite se conserva, así que se puede corregir el
+     * `client_id` sin volver a mandar el secreto ni el token. El token del bot se valida contra
+     * Discord antes de guardar nada.
+     */
+    async updateSocialCredentials(
+        idOrganization: string,
+        socialNetwork: SocialNetwork,
+        body: SocialCredentialsInput,
+        options: RequestOptions = {},
+    ): Promise<Organization> {
+        return this.putOne<Organization>(
+            this.credentialsPath(idOrganization, socialNetwork),
+            "organization",
+            body,
+            options,
+        );
+    }
+
+    /**
+     * Borra las credenciales propias de una red. Las cuentas ya conectadas con ellas **dejan de
+     * funcionar**: no hay a quién pedirle un token.
+     */
+    async deleteSocialCredentials(
+        idOrganization: string,
+        socialNetwork: SocialNetwork,
+        options: RequestOptions = {},
+    ): Promise<Organization> {
+        return unwrapOne<Organization>(
+            await this.httpDelete<unknown>(
+                this.credentialsPath(idOrganization, socialNetwork),
+                undefined,
+                options,
+            ),
+            "organization",
+        );
+    }
+
+    private credentialsPath(idOrganization: string, socialNetwork: SocialNetwork): string {
+        return `/organizations/${requireId(idOrganization, "idOrganization")}/social_credentials/${socialNetwork}`;
     }
 }

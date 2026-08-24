@@ -27,7 +27,7 @@ export interface RequestOptions {
 export abstract class Resource {
     constructor(protected readonly client: RequestSender) {}
 
-    protected async send<T>(request: HttpRequest, options: RequestOptions = {}): Promise<T> {
+    protected async dispatch<T>(request: HttpRequest, options: RequestOptions = {}): Promise<T> {
         const response = await this.client.request<T>({
             ...request,
             ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -42,24 +42,28 @@ export abstract class Resource {
      * id)` es lo que un integrador escribe— y en TypeScript una subclase no puede declarar un
      * miembro con la firma de uno heredado. Sin el prefijo, `this.get(...)` dentro de un recurso
      * resolvía a su propio método público y compilaba llamando a otra cosa.
+     *
+     * Por lo mismo el envío crudo se llama `dispatch` y no `send`: `pv.messages.send(...)` es el
+     * nombre obvio de mandar un mensaje, y con el genérico ocupando `send` la subclase no
+     * compilaba.
      */
     protected httpGet<T>(path: string, query?: Query, options?: RequestOptions): Promise<T> {
-        return this.send<T>({ method: "GET", path, ...(query ? { query } : {}) }, options);
+        return this.dispatch<T>({ method: "GET", path, ...(query ? { query } : {}) }, options);
     }
 
     protected httpPost<T>(path: string, body?: unknown, options?: RequestOptions, query?: Query): Promise<T> {
-        return this.send<T>(
+        return this.dispatch<T>(
             { method: "POST", path, ...(body === undefined ? {} : { body }), ...(query ? { query } : {}) },
             options,
         );
     }
 
     protected httpPut<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
-        return this.send<T>({ method: "PUT", path, ...(body === undefined ? {} : { body }) }, options);
+        return this.dispatch<T>({ method: "PUT", path, ...(body === undefined ? {} : { body }) }, options);
     }
 
     protected httpDelete<T>(path: string, query?: Query, options?: RequestOptions): Promise<T> {
-        return this.send<T>({ method: "DELETE", path, ...(query ? { query } : {}) }, options);
+        return this.dispatch<T>({ method: "DELETE", path, ...(query ? { query } : {}) }, options);
     }
 
     /** `GET` de una lista, ya desenvuelta a `{data, total}`. */

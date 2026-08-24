@@ -23,17 +23,18 @@ and has **zero runtime dependencies**.
 
 ## Status
 
-**Early. Connecting accounts, the publishing path and the webhooks work; the inbox does not, yet.**
+**Every endpoint of the API is covered.** Connecting accounts, publishing, the comment and
+message inboxes, contacts, products, integrations, AI plans, the dashboard and the webhooks.
 
-| Phase | What it adds                                             | State   |
-| ----- | -------------------------------------------------------- | ------- |
-| 3     | Package skeleton: dual ESM/CJS build, tests, CI, release | done    |
-| 4     | Transport, authentication and errors                     | done    |
-| 5     | Types generated from the OpenAPI specification           | done    |
-| 6     | Resources: the publishing path                           | done    |
-| 7     | Resources: inbox and the rest                            | pending |
-| 8     | Webhooks                                                 | done    |
-| 9     | The account connection flow                              | done    |
+| Phase | What it adds                                             | State |
+| ----- | -------------------------------------------------------- | ----- |
+| 3     | Package skeleton: dual ESM/CJS build, tests, CI, release | done  |
+| 4     | Transport, authentication and errors                     | done  |
+| 5     | Types generated from the OpenAPI specification           | done  |
+| 6     | Resources: the publishing path                           | done  |
+| 7     | Resources: inbox and the rest                            | done  |
+| 8     | Webhooks                                                 | done  |
+| 9     | The account connection flow                              | done  |
 
 ## Publishing
 
@@ -84,14 +85,23 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | Resource           | Methods                                                                                                                                                                                                            |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages` — all cached in memory per client |
-| `pv.clients`       | `list`, `iterate`, `get`, `update`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                                                                      |
-| `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`                                                                                                     |
+| `pv.clients`       | `list`, `iterate`, `get`, `update`, `updateAiSettings`, `withOrganizations`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                             |
+| `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`, `updateAiContext`, `updateSocialCredentials`, `deleteSocialCredentials`                            |
 | `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                                               |
 | `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                   |
-| `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                                              |
+| `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `updateByAccount`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                           |
+| `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`                                                                                       |
+| `pv.messages`      | `conversations`, `iterateConversations`, `conversationTotals`, `list`, `iterate`, `send`, `unreadCount`, `removeByAccount`, `templates`, `createTemplate`, `deleteTemplate`                                        |
+| `pv.contacts`      | `list`, `iterate`, `get`, `create`, `update`, `merge`, `remove`, `removeAll`                                                                                                                                       |
+| `pv.products`      | `list`, `iterate`, `create`, `catalogs`, `createCatalog`                                                                                                                                                           |
+| `pv.integrations`  | `providers`, `list`, `iterate`, `get`, `connectLink`, `connect`, `reconnect`, `update`, `remove`, `pickerConfig`                                                                                                   |
+| `pv.aiPlans`       | `create`, `get`, `list`, `iterate`, `validate`, `retry`, `regenerate`, `remove`                                                                                                                                    |
+| `pv.dashboard`     | `summary`, `metrics`, `publications`, `topPublications`, `publicationStats`, `use`                                                                                                                                 |
+| `pv.apps`          | `list`, `get`, `create`, `update`, `remove`, `secret` — **needs a user token**, not app credentials                                                                                                                |
 
-Anything not covered yet is reachable through the generic `pv.request(...)`, and the response types
-are already published, so you can annotate what comes back:
+Every documented endpoint has a method. `pv.request(...)` is still there as an escape hatch — for
+an endpoint added to the API before this package catches up — and the response types are published,
+so you can annotate what comes back:
 
 ```ts
 import type { Comment } from "planvortex";
@@ -107,6 +117,50 @@ These types are generated from the same OpenAPI specification the
 endpoint that does not exist. One deliberate exception to "generated": every enumeration that grows
 with the product — `SocialNetwork`, `PublicationState`, `FileFormat` — is **open**. The known values
 autocomplete, and a network added to PlanVortex next month does not break your build.
+
+## The inbox
+
+Comments and messages are two different sections, not one: a comment hangs off a **publication** and
+its author is somebody you may never be able to write to; a message hangs off a **contact**. They
+have their own permissions, and both need a paid plan.
+
+```ts
+// The inbox: reads from PlanVortex's database. Free, fast, and a snapshot.
+const { data: comments } = await pv.comments.list(orgId, { unread: true, rating: [1, 2] });
+
+// The thread: asked of the network right now, and reconciled with what was stored.
+const thread = await pv.comments.thread(orgId, publicationId);
+console.log(thread.credits_consumed); // X charges one credit per comment read
+
+// Only offer what the network allows.
+const actions = await pv.comments.actions("instagram");
+if (actions?.delete_others) {
+    await pv.comments.remove(orgId, commentId);
+}
+```
+
+Four things that surprise everybody:
+
+- **The inbox and the thread are not the same read.** The inbox is a photograph — `collected_date`
+  says how old — and costs nothing. The thread is live, and on X it costs a credit per comment
+  returned. That is also why there is no `iterate()` for a thread.
+- **They paginate differently.** The inbox takes a numeric `offset`; the thread takes back the
+  opaque `next_cursor` of the previous page, as `offset`.
+- **A Google Business review hangs off the listing, not off a post**, so it has its own route:
+  `pv.comments.threadByAccount(orgId, accountId)`. It can arrive with a `rating` and no text at all.
+- **Reading a message thread marks it read.** First page only, and there is no way to opt out — it
+  is what makes `unreadCount()` go down.
+
+```ts
+const { data: conversations } = await pv.messages.conversations(orgId, accountId);
+await pv.messages.send(orgId, accountId, conversations[0].contact._id, {
+    message_type: "simple_message",
+    text: "We open from 9 to 14",
+});
+```
+
+Message templates are **WhatsApp only**. Every other network answers HTTP 500 with `code: 500`
+rather than the 1502 you would expect, so check the account's network first.
 
 ## Connecting a social account
 
@@ -183,8 +237,8 @@ Outside Express — Hono, Fastify, a Next route handler — use the framework-ag
 import { handleWebhookRequest } from "planvortex/webhooks";
 
 const changes = handleWebhookRequest({
-    body: await request.text(),          // the RAW body
-    headers: request.headers,            // a Headers or a plain object
+    body: await request.text(), // the RAW body
+    headers: request.headers, // a Headers or a plain object
     secret: process.env.PLANVORTEX_CLIENT_SECRET!,
 });
 ```
@@ -196,16 +250,16 @@ malformed signature.
 
 ### The events
 
-| `field` | What happened | Where the payload is |
-|---|---|---|
-| `new_account` | An account was connected | — |
-| `change_state_account` | An account changed state: broke, refreshed, disconnected | — |
-| `messages` | A message came in | `messageObj` |
-| `messaging_postbacks` | The contact pressed a button or a quick reply | `messageObj` |
-| `messaging_seen` | The contact read the conversation | `messageObj`, when we have it |
-| `messaging_error` | The network refused a message you sent | `messageObj.message_errors` |
-| `comments` | A comment came in | `commentObj` |
-| `integration_error` | An integration stopped working | `provider`, `error_code` |
+| `field`                | What happened                                            | Where the payload is          |
+| ---------------------- | -------------------------------------------------------- | ----------------------------- |
+| `new_account`          | An account was connected                                 | —                             |
+| `change_state_account` | An account changed state: broke, refreshed, disconnected | —                             |
+| `messages`             | A message came in                                        | `messageObj`                  |
+| `messaging_postbacks`  | The contact pressed a button or a quick reply            | `messageObj`                  |
+| `messaging_seen`       | The contact read the conversation                        | `messageObj`, when we have it |
+| `messaging_error`      | The network refused a message you sent                   | `messageObj.message_errors`   |
+| `comments`             | A comment came in                                        | `commentObj`                  |
+| `integration_error`    | An integration stopped working                           | `provider`, `error_code`      |
 
 `isAccountStateChange`, `isMessageChange`, `isCommentChange` and `isIntegrationErrorChange` narrow
 a change to its own type. Use them rather than a `switch`: the union carries a member for the
@@ -243,7 +297,7 @@ request, retries 429/502/503/504 and network failures with exponential backoff a
 `Retry-After`, and turns every error body into a typed class. It never retries a domain error, and
 it never repeats a `POST` that reached the server.
 
-## Five things to know before you write any code
+## Six things to know before you write any code
 
 **Classify errors by `code`, never by the HTTP status.** Every domain error travels with HTTP 400 —
 an expired token, a disconnected account, an exhausted plan quota and a text that is too long are
@@ -260,6 +314,14 @@ state; a `try/catch` will not tell you.
 
 **`upload.public_path` expires.** It is a signed URL, not a permanent link: identical within the
 same hour, gone afterwards. Do not store it in your database — ask for the upload again.
+
+**Some fields arrive populated and some arrive as identifiers, and it depends on the operation.**
+`publication.id_account` is resolved when you read one publication and a string in the listing;
+`comment.id_account` and `comment.id_publication` are the other way round — resolved in the inbox
+and strings everywhere else; a message's contact and files are resolved in the listing and in the
+webhook. The types say `string | object` because both really happen, and there are helpers so you
+do not write the `typeof` yourself: `accountId`, `account`, `publicationId`, `publication`,
+`messageContact`, `messageContactId`, `messageFiles`.
 
 **A webhook signature is computed over the raw body.** Not over a re-serialized copy of the parsed
 JSON: the bytes differ and the signature never matches. Either let `planvortexWebhooks()` read the

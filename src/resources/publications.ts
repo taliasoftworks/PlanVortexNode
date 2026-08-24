@@ -157,6 +157,29 @@ export class PublicationsResource extends Resource {
     }
 
     /**
+     * Lo mismo que {@link update}, por la ruta que además nombra la cuenta.
+     *
+     * La API tiene las dos y **las sirve el mismo handler**: da igual cuál se llame, y `idAccount`
+     * sólo se usa para comprobar que la cuenta existe y es de esa organización. Existe aquí porque
+     * es una ruta pública y quien venga leyendo la documentación la va a buscar; para escribir
+     * código nuevo, {@link update}.
+     */
+    async updateByAccount(
+        idOrganization: string,
+        idAccount: string,
+        idPublication: string,
+        body: Partial<PublicationInput>,
+        options: RequestOptions = {},
+    ): Promise<Publication> {
+        return this.putOne<Publication>(
+            `/organizations/${requireId(idOrganization, "idOrganization")}/accounts/${requireId(idAccount, "idAccount")}/publish/${requireId(idPublication, "idPublication")}`,
+            "publication",
+            serializeInput(body),
+            options,
+        );
+    }
+
+    /**
      * Borra una publicación **y también el post en la red social**.
      *
      * En X borrar cuesta créditos: sin ellos devuelve un 940 en vez de un error genérico.

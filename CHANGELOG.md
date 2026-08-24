@@ -8,8 +8,83 @@ All notable changes to this package are documented here. The format follows
 
 ### Added
 
+- **The rest of the API** (phase 7), so every documented endpoint now has a method:
+  `pv.comments`, `pv.messages`, `pv.contacts`, `pv.products`, `pv.integrations`, `pv.aiPlans`,
+  `pv.dashboard` and `pv.apps`, plus the six operations phase 6 had left out —
+  `clients.updateAiSettings`, `clients.withOrganizations`, `organizations.updateAiContext`,
+  `organizations.updateSocialCredentials`, `organizations.deleteSocialCredentials` and
+  `publications.updateByAccount`.
+- `pv.comments` separates the two reads the API really has: `list()` / `iterate()` serve the inbox
+  out of PlanVortex's database (free, and a snapshot), while `thread()`, `threadByAccount()` and
+  `replies()` ask the network live and report what that cost in `credits_consumed`. There is
+  deliberately **no** `iterate()` for a thread: on X each comment read is a credit.
+- `comments.actions(network?)` shares the catalogue's cache, so the four flags that decide which
+  buttons you can paint cost one request per client instance.
+- `contacts.merge()`, which reads the contact before updating it. It exists because
+  `PUT /contacts/{id}` writes `extra_data` with whatever the body carries, so a plain `update()`
+  without it **erases every custom field** — a data loss that shows up weeks later.
+- `dashboard.publicationStats()` — the publications-with-metrics listing that lives at
+  `/organizations/{id}/publications/stats`. Unlike `topPublications()` it includes publications
+  nobody has measured yet, with `metrics` absent.
+- `publicationId()` and `publication()` helpers, and `accountId()` / `account()` now take a
+  comment as well as a publication: the populated-or-string asymmetry runs in opposite directions
+  in the two domains.
+- New types: `CommentThread`, `CommentReplyResult`, `ConversationTotals`, `MessageInput`,
+  `MessageTemplate`, `ContactCreate`, `ContactUpdate`, `ContactExtraData`,
+  `SocialIdentifierInput`, `ProductInput`, `ProductCatalog`, `ProductCatalogInput`,
+  `IntegrationProvider`, `IntegrationConnectRequest`, `IntegrationUpdate`,
+  `IntegrationPickerConfig`, `RssConfig`, `AiPlanState`, `AiPlanOptions`, `AiPlanOptionsInput`,
+  `AiPlanCreateRequest`, `AiPlanCostEstimate`, `AiPlanCreateResult`, `ClientAppInput`,
+  `AiSettings`, `SocialCredentialsInput`, `ClientWithOrganizations`, `Dashboard`,
+  `DashboardRange`, `MetricName`, `MetricRow`, `TopPublication`, `PlanUse`, `AccountWithError`
+  and the projected `DashboardPublicationRef` / `DashboardAiPlanRef`.
+
+### Changed
+
+- `Publication`, `PublicationStats` and `NormalizedMetrics` are now shared definitions of the
+  specification instead of one copy per section, so a publication inside a comment, a dashboard row
+  and the publications listing are finally the same type. `NormalizedMetrics` had genuinely
+  drifted: the dashboard declared a loose `Record<string, number>` and publications enumerated the
+  twelve real metrics.
+- Every schema of these eight sections now declares its `required` fields, audited one by one
+  against `src/domain/**` of the server. That removes a long tail of `?` from fields that always
+  travel — and, where the audit found the opposite, adds one.
+- `Comment.id_account` and `Comment.id_publication` are typed `string | object`: the inbox
+  resolves both and every other operation returns identifiers. The specification claimed strings
+  everywhere.
+- The protected `Resource.send` is now `Resource.dispatch`, so `pv.messages.send()` can be called
+  what it obviously should be called.
+
+### Fixed
+
+- Specification bugs found auditing phase 7, each of which would have compiled and then read
+  `undefined` at runtime:
+    - `TopPublication` described a shape that does not exist. The aggregation projects
+      `id_publication` and nests the content under `publication`; the specification announced `_id`,
+      `name` and `text` at the root — all three `undefined`.
+    - The dashboard's AI block announced `publications` and the server sends
+      `generated_publications`, and `pending_validation` was missing altogether.
+    - `AiPlanOptions` was missing `shared` and `use_organization_context`, and `AiPlan` was missing
+      `organization_context` — the snapshot that makes a retry reproducible.
+    - `MetricRow.group` is `null` when grouping by `total`; it was typed as a plain string, so the
+      simplest call of that endpoint did not fit its own type.
+    - `AiSettings` documented in prose that a scope set to `null` clears it, while the type refused
+      `null`.
+    - A `default` on a **request** property made it required in the generated types — the mirror
+      image of the `followers_count` bug of phase 6. Ten of them, across the RSS connect body and
+      the AI plan options.
+    - `ContactInput` was one schema for two shapes: creating requires at least one identifier
+      (error 1601) and updating does not, and updating is destructive about `extra_data`. It is now
+      `ContactCreate` and `ContactUpdate`. `SocialIdentifier` needed the same split, because `_id`
+      always comes back and is never sent.
+- Documented, rather than silently inherited, three things the server does that the specification
+  promised otherwise: `GET /contacts?social_network=` always returns an empty list,
+  `GET /products?product_id=` never reaches the network, and `MessageInput.in_response_external_id`
+  is not read from the body — which is why `comment_message` and `publication_message` cannot be
+  sent through the public API today.
+
 - The account connection flow: `pv.organizations.createConnectToken(orgId, {social_network,
-  redirect_uri})` mints the one-hour token a person needs to connect a social account, and
+redirect_uri})` mints the one-hour token a person needs to connect a social account, and
   `pv.asTemporalToken(token).accounts` exposes `connectLinks()`, `connect()` and `enable()`. App
   credentials are refused by those three (error 519) — that is the whole point of the flow, and the
   reason this is not something an app can do on its own.

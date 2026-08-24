@@ -17,9 +17,10 @@
  * ```
  *
  * De la fase 4 está el núcleo —transporte, autenticación y errores—, de la 5 los tipos generados del
- * OpenAPI público, de la 6 el camino de publicar entero —`pv.catalog`, `pv.clients`,
- * `pv.organizations`, `pv.accounts`, `pv.uploads` y `pv.publications`—, de la 8 los webhooks y de la
- * 9 el flujo de conexión de cuentas. El resto de recursos llega en la fase 7.
+ * OpenAPI público, de la 6 el camino de publicar —`pv.catalog`, `pv.clients`, `pv.organizations`,
+ * `pv.accounts`, `pv.uploads` y `pv.publications`—, de la 7 el resto —`pv.comments`, `pv.messages`,
+ * `pv.contacts`, `pv.products`, `pv.integrations`, `pv.aiPlans`, `pv.dashboard` y `pv.apps`—, de la
+ * 8 los webhooks y de la 9 el flujo de conexión de cuentas. **Ya está cubierta toda la API.**
  */
 
 export { PLANVORTEX_API_URL, VERSION } from "./version.js";
@@ -41,6 +42,22 @@ export type {
     ConnectCallbackParams,
     ConnectLinksOptions,
 } from "./resources/accounts.js";
+export type { AiPlanRegenerateResult, AiPlanRegenerateTarget } from "./resources/ai_plans.js";
+export type { ContactExtraFilter, ContactListOptions } from "./resources/contacts.js";
+export type {
+    MetricsGroupBy,
+    MetricsOptions,
+    PublicationsStatsOptions,
+    RangeOptions,
+    TopPublicationsOptions,
+} from "./resources/dashboard.js";
+export type { ConnectLinkOptions, IntegrationListOptions } from "./resources/integrations.js";
+export type {
+    ConversationGroupBy,
+    ConversationTotalsOptions,
+    MessageTemplateResult,
+} from "./resources/messages.js";
+export type { CommentListOptions, CommentThreadOptions, CommentUpdate } from "./resources/comments.js";
 export type { ClientListOptions, OrganizationInput, OrganizationListOptions } from "./resources/clients.js";
 export type {
     ChildOrganizationListOptions,
@@ -52,9 +69,17 @@ export type { PublicationListOptions, PublicationRetryResult } from "./resources
 export type { ImportError, ImportFileInput, ImportResult, UploadUpdate } from "./resources/uploads.js";
 
 export { AccountsResource } from "./resources/accounts.js";
+export { AiPlansResource } from "./resources/ai_plans.js";
+export { AppsResource } from "./resources/apps.js";
 export { CatalogResource } from "./resources/catalog.js";
 export { ClientsResource } from "./resources/clients.js";
+export { CommentsResource } from "./resources/comments.js";
+export { ContactsResource } from "./resources/contacts.js";
+export { DashboardResource } from "./resources/dashboard.js";
+export { IntegrationsResource } from "./resources/integrations.js";
+export { MessagesResource } from "./resources/messages.js";
 export { OrganizationsResource } from "./resources/organizations.js";
+export { ProductsResource } from "./resources/products.js";
 export { PublicationsResource } from "./resources/publications.js";
 export { UploadsResource } from "./resources/uploads.js";
 
@@ -113,6 +138,8 @@ export {
     messageDirection,
     messageFileIds,
     messageFiles,
+    publication,
+    publicationId,
 } from "./types.js";
 
 /**
@@ -143,29 +170,62 @@ export type {
     Account,
     AccountMetricRow,
     AccountMetrics,
+    AccountWithError,
     AiContext,
+    AiSettings,
     AiPlan,
+    AiPlanCostEstimate,
+    AiPlanCreateRequest,
+    AiPlanCreateResult,
+    AiPlanOptions,
+    AiPlanOptionsInput,
+    AiPlanState,
     AspectRatios,
     AspectRatiosByNetwork,
     Client,
     ClientApp,
+    ClientAppInput,
     ClientPlan,
+    ClientWithOrganizations,
     Comment,
     CommentActions,
     CommentAuthor,
     CommentNetwork,
+    CommentReplyResult,
+    CommentThread,
     ConnectLink,
     ConnectResult,
     ConnectToken,
     Contact,
+    ContactChannel,
+    ContactCreate,
+    ContactExtraData,
+    ContactUpdate,
     Conversation,
+    ConversationTotals,
+    Dashboard,
+    DashboardAiPlanRef,
+    DashboardMetricsResult,
+    DashboardPublicationRef,
+    DashboardRange,
     EnableResult,
     EngagementBase,
     FileFormat,
     FileProperties,
     FileType,
     Integration,
+    IntegrationConnectRequest,
+    IntegrationPickerConfig,
+    IntegrationProvider,
+    IntegrationProviderName,
+    IntegrationUpdate,
     Message,
+    MessageInput,
+    MetricName,
+    MetricRow,
+    MessageOptions,
+    MessageTemplate,
+    MessageType,
     OpenApiComponents,
     OpenApiOperations,
     OpenApiPaths,
@@ -175,7 +235,11 @@ export type {
     Paginated,
     PersistentMenu,
     PlanData,
+    PlanUse,
     Product,
+    ProductCatalog,
+    ProductCatalogInput,
+    ProductInput,
     Publication,
     PublicationErrorDetail,
     PublicationInput,
@@ -185,11 +249,21 @@ export type {
     PublicationStats,
     PublicationStatsHistory,
     PublicationStatsPoint,
+    PublicationsStatsResult,
+    PublicationsSummary,
+    PublicationsSummaryResult,
     PublicationType,
     SocialCapabilities,
     SocialCredentials,
     SocialLimits,
+    RssConfig,
+    SocialIdentifier,
+    SocialIdentifierInput,
     SocialLimitsMap,
     SocialNetwork,
+    TopPublication,
+    TopPublicationsResult,
     Upload,
+    WithAccount,
+    WithPublication,
 } from "./types.js";

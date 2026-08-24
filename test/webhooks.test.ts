@@ -11,7 +11,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
 import { messageContact, messageContactId, messageDirection, messageFiles } from "../src/index.js";
-import type { Comment, Message } from "../src/index.js";
+import type { Message } from "../src/index.js";
 import {
     WebhookBodyError,
     WebhookSignatureError,
@@ -25,22 +25,9 @@ import {
     verifyWebhookSignature,
 } from "../src/webhooks/index.js";
 import type { WebhookChange, WebhookRequestLike, WebhookResponseLike } from "../src/webhooks/index.js";
-import { ORG_ID, ACCOUNT_ID, upload } from "./helpers/fixtures.js";
+import { ORG_ID, ACCOUNT_ID, comment, upload } from "./helpers/fixtures.js";
 
 const SECRET = "un-client-secret-de-mentira";
-
-const comment: Comment = {
-    _id: "66d04a6a427f4c43b9d97f70",
-    id_account: ACCOUNT_ID,
-    id_organization: ORG_ID,
-    external_id: "17800000000000001",
-    publication_external_id: "17900000000000000",
-    social_network: "instagram",
-    author: { external_id: "9988776655", name: "un_seguidor", is_own: false },
-    text: "Me interesa, ¿cuánto cuesta?",
-    read: false,
-    replied: false,
-};
 
 const message: Message = {
     _id: "66d04a6a427f4c43b9d97f80",

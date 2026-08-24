@@ -2,3 +2,10 @@ dist
 coverage
 src/generated
 openapi
+
+# La configuración del repo se commiteó con 2 espacios y prettier la reindenta a 4 (`tabWidth`),
+# así que un `npm run format` reescribía media docena de ficheros que no tienen nada que ver con
+# el cambio en curso — y el lockfile entero. Se ignoran para que `format` toque sólo el código.
+*.json
+.github
+.prettierrc
