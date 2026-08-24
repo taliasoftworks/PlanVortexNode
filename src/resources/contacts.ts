@@ -14,7 +14,7 @@
  *    lo explica y {@link ContactsResource.merge} lo evita.
  *  - **Borrar un contacto borra también sus mensajes**, y borrar los de la organización los borra
  *    todos. No hay papelera.
- *  - **Exige plan de pago** (error 1520).
+ *  - **Exige plan de pago** (error 516).
  */
 import { Resource, requireId } from "./base.js";
 import type { Query, RequestOptions, SuccessResponse } from "./base.js";

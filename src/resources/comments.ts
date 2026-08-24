@@ -16,7 +16,7 @@
  *  - **No todas las redes dejan hacer lo mismo.** Antes de pintar un botón, {@link
  *    CommentsResource.actions}: Instagram, X y Bluesky no dejan borrar el comentario de otro,
  *    LinkedIn no tiene "ocultar" y Google Business sólo deja borrar **nuestra propia** respuesta.
- *  - **Todo esto exige plan de pago.** Con un plan gratuito la API devuelve el error 1520.
+ *  - **Todo esto exige plan de pago.** Con un plan gratuito la API devuelve el error 516.
  *  - **Borrar borra en la red**, no sólo en la bandeja. La fila se conserva marcada para que la
  *    siguiente lectura no la vuelva a dar de alta.
  */

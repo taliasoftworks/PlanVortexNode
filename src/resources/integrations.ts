@@ -13,7 +13,7 @@
  *    (RSS) se manda directamente el formulario que describe `config_fields`. Nunca se adivina: se
  *    lee de {@link IntegrationsResource.providers}.
  *  - **Es un recurso del plan** (`integrations`, `0` en el gratuito): pasarse devuelve el error
- *    1409. Sólo cuentan las habilitadas.
+ *    1404. Sólo cuentan las habilitadas.
  *  - **Las credenciales no salen nunca.** Lo que hay para saber si la conexión está viva es
  *    `connected`, y el motivo cuando no lo está, en `error_code`.
  *  - **Reconectar no es crear.** Renueva las credenciales del MISMO documento, va por permiso de
@@ -130,7 +130,7 @@ export class IntegrationsResource extends Resource {
     }
 
     /**
-     * Conecta una integración nueva. **Ocupa cupo del plan** (error 1409 si no queda).
+     * Conecta una integración nueva. **Ocupa cupo del plan** (error 1404 si no queda).
      *
      * El cuerpo depende del proveedor: `{provider: "google_drive", code}` para el OAuth, o el
      * formulario de `config_fields` **PLANO** —no dentro de un `config`— para el resto. El `config`

@@ -34,7 +34,7 @@ export type { PageOptions } from "./core/pagination.js";
 export { guessContentType } from "./core/files.js";
 export type { FileInput, FileSource } from "./core/files.js";
 
-export type { RequestOptions } from "./resources/base.js";
+export type { RequestOptions, RequestSender } from "./resources/base.js";
 export type {
     AccountCapability,
     AccountListOptions,
@@ -116,6 +116,7 @@ export type {
     HttpMethod,
     HttpRequest,
     HttpResponse,
+    QueryValue,
     RequestInfo,
     ResponseInfo,
     RetryConfig,

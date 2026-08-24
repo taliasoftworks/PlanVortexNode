@@ -6,7 +6,7 @@
  *  - **No todas las redes tienen chat.** LinkedIn, X, TikTok, Bluesky y Discord no, y Google
  *    Business tampoco: en esas la API devuelve el error 1502. Quien manda es `messages` en
  *    `pv.catalog.socialCapabilities()`.
- *  - **Exige plan de pago** (error 1520), y el chat además exige que el plan lo incluya (515).
+ *  - **Exige plan de pago** (error 516), y el chat además exige que el plan lo incluya (515).
  *  - **La primera lectura de una cuenta es lenta.** Si en la base de datos no hay nada, el servidor
  *    baja las conversaciones de la red antes de contestar. La segunda ya sale de Mongo.
  *  - **Leer un hilo lo marca como leído**, y sólo en la primera página (`offset: 0`). No es un

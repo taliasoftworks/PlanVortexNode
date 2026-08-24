@@ -22,7 +22,7 @@ export type PlanVortexErrorRange = {
 };
 
 export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
-    { from: 500, to: 541, family: "auth" },
+    { from: 500, to: 542, family: "auth" },
     { from: 601, to: 612, family: "user" },
     { from: 700, to: 715, family: "account" },
     { from: 800, to: 810, family: "file" },
@@ -109,7 +109,7 @@ export class PlanVortexError extends Error {
     }
 }
 
-/** 500-541 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
+/** 500-542 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
 export class AuthError extends PlanVortexError {}
 /** 601-612 — el usuario final. */
 export class UserError extends PlanVortexError {}

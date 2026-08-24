@@ -1,8 +1,10 @@
 {
-  "entryPoints": ["src/index.ts", "src/webhooks/index.ts"],
-  "out": "docs",
-  "excludePrivate": true,
-  "excludeInternal": true,
-  "readme": "README.md",
-  "name": "planvortex"
+    "entryPoints": ["src/index.ts", "src/webhooks/index.ts"],
+    "out": "docs",
+    "excludePrivate": true,
+    "excludeProtected": true,
+    "excludeInternal": true,
+    "readme": "README.md",
+    "name": "planvortex",
+    "intentionallyNotExported": ["Override", "Schemas", "Operations"]
 }

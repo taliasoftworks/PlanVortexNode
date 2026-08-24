@@ -193,7 +193,7 @@ export interface paths {
          * List the client's apps
          * @description The apps of a client. Secrets never travel here: to read one, ask for it explicitly with the `secret` endpoint.
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
          */
         get: operations["getClientApps"];
         put?: never;
@@ -209,7 +209,7 @@ export interface paths {
          *
          *     **A client can only have ONE app.** Creating a second one is rejected with `ERROR_CODE_536`: delete or update the one that exists. The listing is paginated because every listing in this API is, not because there can be more than one.
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
          */
         post: operations["createClientApp"];
         delete?: never;
@@ -229,7 +229,7 @@ export interface paths {
          * Get one app
          * @description The app's record, without its secret. Note the envelope: `{client_app}` here, `{client_apps, total}` in the list.
          *
-         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. A plan with at least two users is still required (`ERROR_CODE_511`).
+         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. The **Custom plan** is still required (`ERROR_CODE_542`).
          */
         get: operations["getClientApp"];
         /**
@@ -240,7 +240,7 @@ export interface paths {
          *
          *     **It replaces every field with what the body carries.** `name`, `keycloak_client_idenfifier`, `allowed_domains`, `redirect_urls` and `webhook_url` are all written as sent, so omitting one erases it — sending an update without `webhook_url` turns the webhook off. Read the app first and send it back whole.
          *
-         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. A plan with at least two users is still required (`ERROR_CODE_511`).
+         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. The **Custom plan** is still required (`ERROR_CODE_542`).
          */
         put: operations["updateClientApp"];
         post?: never;
@@ -248,7 +248,7 @@ export interface paths {
          * Delete an app
          * @description Revokes the credentials and marks the app as deleted. **Tokens already issued stop working**: the token endpoint checks that the app still exists before answering, and requests carrying an old token no longer resolve to an app.
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
          */
         delete: operations["deleteClientApp"];
         options?: never;
@@ -269,7 +269,7 @@ export interface paths {
          *
          *     The same secret is what signs the outgoing webhooks (`x-hub-signature`, `x-hub-signature-256`).
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs a plan with at least two users (`ERROR_CODE_511`).
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
          *
          *     It comes straight from Keycloak, so it is the live secret and not a copy: treat the response as a credential and never log it.
          */
@@ -3326,7 +3326,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-541 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
+            /** @description PlanVortex error code. Ranges: 500-542 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {

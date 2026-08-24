@@ -29,8 +29,8 @@ export interface ClientCredentialsToken {
 }
 
 /**
- * De dónde sale el `Authorization` de cada petición. Dos implementaciones: las credenciales de app
- * ({@link ClientCredentialsAuth}) y el token temporal de conexión ({@link StaticTokenAuth}).
+ * De dónde sale el `Authorization` de cada petición. Dos implementaciones, las dos internas: las credenciales de app
+ * (`ClientCredentialsAuth`) y el token temporal de conexión (`StaticTokenAuth`).
  */
 export interface AuthProvider {
     /** El token a poner en `Authorization: Bearer`. Pide uno nuevo si hace falta. */

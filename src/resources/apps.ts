@@ -8,7 +8,9 @@
  *    leer el secreto devuelven el error 512. Lo único que una app puede hacer con esta sección es
  *    LEER y ACTUALIZAR su propio registro. Está aquí para quien se construye su propio panel.
  *  - **Un cliente sólo puede tener UNA app.** Crear la segunda devuelve el error 536.
- *  - **Hace falta un plan con al menos dos usuarios** (error 511).
+ *  - **Hace falta el plan CUSTOM** (error 542). No es "un plan de pago": pro es de pago y no
+ *    crea apps. Las apps son lo que ese plan añade, y sin app no hay `client_id` con el que
+ *    pedir un token, así que este error es el que se encuentra quien intenta integrar sin él.
  *  - **El secreto no está en la ficha.** Vive en Keycloak y se pide aparte.
  *  - **Actualizar REEMPLAZA**: los cinco campos se escriben con lo que traiga el cuerpo, así que
  *    omitir `webhook_url` apaga el webhook (§ {@link AppsResource.update}).

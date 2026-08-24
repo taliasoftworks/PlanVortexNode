@@ -21,6 +21,11 @@ npm install planvortex
 Requires **Node 20 or newer** (`fetch`, `FormData`, `Blob` and `fs.openAsBlob` are globals there)
 and has **zero runtime dependencies**.
 
+**[API reference](https://taliasoftworks.github.io/PlanVortexNode/)** — every method, option and
+type, generated from the source on every push. The endpoints themselves are documented at
+[planvortex.com/documentation](https://planvortex.com/documentation), and the runnable examples are
+in [examples/](https://github.com/taliasoftworks/PlanVortexNode/tree/main/examples).
+
 ## Status
 
 **Every endpoint of the API is covered.** Connecting accounts, publishing, the comment and
@@ -35,6 +40,8 @@ message inboxes, contacts, products, integrations, AI plans, the dashboard and t
 | 7     | Resources: inbox and the rest                            | done  |
 | 8     | Webhooks                                                 | done  |
 | 9     | The account connection flow                              | done  |
+| 10    | Three test layers, the third against a real PlanVortex   | done  |
+| 11    | Documentation: reference, examples, guides               | done  |
 
 ## Publishing
 
@@ -150,6 +157,9 @@ Four things that surprise everybody:
   `pv.comments.threadByAccount(orgId, accountId)`. It can arrive with a `rating` and no text at all.
 - **Reading a message thread marks it read.** First page only, and there is no way to opt out — it
   is what makes `unreadCount()` go down.
+
+A complete, runnable version is in [examples/comments.ts](examples/comments.ts) — the badge, the
+inbox, the action matrix, a live thread and a reply. It only replies when you ask it to.
 
 ```ts
 const { data: conversations } = await pv.messages.conversations(orgId, accountId);
@@ -291,6 +301,39 @@ try {
 }
 ```
 
+The class you catch comes from the **range** the code falls in. There is no separate list to keep:
+the same ranges are published in the API documentation, and `PLANVORTEX_ERROR_RANGES` exports them
+if you would rather branch on `error.family`.
+
+| Codes                | What went wrong                                        | Class               |
+| -------------------- | ------------------------------------------------------ | ------------------- |
+| 500-542              | Authentication, tokens, permissions, client apps       | `AuthError`         |
+| 601-612              | Users                                                  | `UserError`         |
+| 700-715              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
+| 800-810              | Files                                                  | `FileError`         |
+| 900-960              | Publications, including every per-network limit        | `PublicationError`  |
+| 1000-1003            | General                                                | `PlanVortexError`   |
+| 1100-1111            | Organizations                                          | `OrganizationError` |
+| 1200-1207            | Roles                                                  | `PlanVortexError`   |
+| 1300-1307, 1400-1408 | Plan quota exhausted, at client and organization level | `PlanLimitError`    |
+| 1500-1512            | Messaging                                              | `MessagingError`    |
+| 1600-1601            | Contacts                                               | `ContactError`      |
+| 1900-1906            | Payments                                               | `PlanVortexError`   |
+| 2000-2099            | Products                                               | `ProductError`      |
+| 2100-2199            | AI plans                                               | `AiPlanError`       |
+| 2200-2299            | Integrations                                           | `IntegrationError`  |
+
+A code outside every range — the catalogue grows — arrives as the base `PlanVortexError` with its
+`code` and `message` untouched, never swallowed and never renamed. And when the failure never got a
+code from the server, `error.code` is **0** and `error.family` says which kind it was: `connection`
+(the request never completed), `oauth` (the token exchange itself was rejected, a
+`PlanVortexAuthenticationError`), `config` (this package complaining about how it was constructed),
+`http` (a status with no PlanVortex body, typically a proxy) or `webhook`.
+
+Two codes deserve their own mention: **516** is "this needs a paid plan", which is what the comment
+and message inboxes answer on a free one, and **519** is "an app cannot do this", which is the whole
+account-connection flow.
+
 What the core does on your behalf: exchanges your credentials at `POST /oauth/token` and caches the
 token, refreshes it a minute before it expires, collapses concurrent calls into a **single** token
 request, retries 429/502/503/504 and network failures with exponential backoff and jitter, honours
@@ -336,9 +379,16 @@ npm run build        # dual ESM + CJS with both sets of types
 npm test             # no network, no credentials
 npm run typecheck
 npm run lint
+npm run docs         # the TypeDoc reference, into docs/
 npm run generate     # regenerate the OpenAPI bundle and the types
 npm run check:exports  # publint + arethetypeswrong
+npm run test:live    # against a real PlanVortex; needs .env.live, and skips itself without it
 ```
+
+Every example runs as it is — `npx tsx examples/publish.ts` — against whatever
+`PLANVORTEX_BASE_URL` points at. Point it at a local stack while you try things: the two that write
+in public, publishing for real and replying to a comment, are behind their own environment
+variables and do nothing without them.
 
 ## License
 
