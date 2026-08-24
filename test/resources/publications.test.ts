@@ -287,4 +287,36 @@ describe("publications: lo que falla antes de salir a la red", () => {
 
         await expect(pv.publications.list(ORG_ID)).rejects.toThrow(/publications/);
     });
+
+    it("listByAccount pide la ruta que nombra la cuenta y desenvuelve el mismo sobre", async () => {
+        const calls = api.mock("get", `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/publish`, {
+            publications: [listedPublication],
+            total: 1,
+        });
+        const pv = api.client();
+
+        const page = await pv.publications.listByAccount(ORG_ID, ACCOUNT_ID, { limit: 5 });
+
+        expect(page.total).toBe(1);
+        expect(page.data[0]?._id).toBe(PUBLICATION_ID);
+        expect(calls[0]?.query.limit).toEqual(["5"]);
+    });
+
+    /**
+     * La misma actualización tiene DOS rutas y las sirve el mismo handler. Existe la larga porque
+     * es pública y quien lea la documentación la va a buscar; lo que no puede es apuntar a otro
+     * sitio, que es exactamente lo que no se ve leyendo el código.
+     */
+    it("updateByAccount va por la ruta larga, la que nombra cuenta y publicación", async () => {
+        const path = `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/publish/${PUBLICATION_ID}`;
+        const calls = api.mock("put", path, { publication });
+        const pv = api.client();
+
+        const updated = await pv.publications.updateByAccount(ORG_ID, ACCOUNT_ID, PUBLICATION_ID, {
+            text: "Otro texto",
+        });
+
+        expect(calls[0]?.body).toEqual({ text: "Otro texto" });
+        expect(updated._id).toBe(PUBLICATION_ID);
+    });
 });

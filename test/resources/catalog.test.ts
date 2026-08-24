@@ -118,4 +118,16 @@ describe("catalog", () => {
 
         expect(first).toHaveLength(2);
     });
+
+    it("las redes que publican son un array y se cachean como el resto del catálogo", async () => {
+        const calls = api.mock("get", "/allowed_social_publications", ["instagram", "bluesky"]);
+        const pv = api.client();
+
+        await expect(pv.catalog.allowedSocialPublications()).resolves.toEqual(["instagram", "bluesky"]);
+        await pv.catalog.allowedSocialPublications();
+
+        //Es la lista que decide si una cuenta puede tener publicaciones: WhatsApp y Google Business
+        //no están, y por eso no se puede deducir de `/social_networks`.
+        expect(calls).toHaveLength(1);
+    });
 });

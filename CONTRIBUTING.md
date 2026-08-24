@@ -18,9 +18,38 @@ npm install
 npm test
 ```
 
-The tests need no network and no credentials, on purpose. If a change of yours cannot be tested
-without hitting a real API, it probably belongs in the live layer (`test/live/`), which is opt-in
-and never runs in CI for a pull request.
+The tests need no network and no credentials, on purpose.
+
+## Testing
+
+There are three layers, and each one catches something the others cannot.
+
+| Layer            | What it pins                                                                   | Command             | Cost                    |
+| ---------------- | ------------------------------------------------------------------------------ | ------------------- | ----------------------- |
+| **1 — unit**     | Our own logic: token cache, backoff, pagination, error mapping, the multipart. | `npm test`          | free                    |
+| **2 — contract** | The request each method builds and how it parses the answer, with `msw`.       | `npm test`          | free                    |
+| **3 — live**     | That the **server still answers what this client believes**.                   | `npm run test:live` | needs a real PlanVortex |
+
+Layers 1 and 2 run in CI on every pull request, with a coverage floor (`vitest.config.ts`). They
+never touch the network: an unmocked request fails the test, and so does a declared mock that no
+method ever asked for — without that second half, a method that calls the wrong route goes green.
+
+Layer 3 is the one that sees a renamed response envelope, an error code that moved, or a tenth
+social network shipping without limits. It is **opt-in and never runs in CI**: copy
+`.env.live.example` to `.env.live`, point `PLANVORTEX_LIVE_BASE_URL` at a server (your local
+`docker compose` stack is the sensible choice) and fill in the credentials of a client app. Without
+that file the whole layer skips and tells you what is missing — it never fails for lack of
+credentials.
+
+```bash
+npm run test:live                          # read-only
+LIVE_ALLOW_PUBLISH=1 npm run test:live     # uploads a file and schedules a post, then deletes both
+```
+
+Writes are off by default. Even switched on, nothing reaches a social network: the publication is
+scheduled a day ahead and removed at the end of the test. Publishing for real needs a second,
+deliberate switch, `LIVE_ALLOW_SOCIAL_PUBLISH=1` — that one is public, immediate and irreversible.
+Writing against `api.planvortex.com` refuses to run unless you also pass `LIVE_ALLOW_PRODUCTION=1`.
 
 ## The rules that are not negotiable
 
@@ -37,5 +66,5 @@ and never runs in CI for a pull request.
 
 1. A branch off `main`.
 2. `npm run lint`, `npm run typecheck` and `npm test` in green.
-3. A line in `CHANGELOG.md` under *Unreleased*.
+3. A line in `CHANGELOG.md` under _Unreleased_.
 4. A pull request describing what changes for whoever uses the package.

@@ -200,4 +200,22 @@ describe("integrations.pickerConfig", () => {
         expect(config.app_id).toBe("123456789012");
         expect(config.access_token).toBe("ya29.a0Ae");
     });
+
+    it("una integración suelta se lee por su identificador y viene envuelta en {integration}", async () => {
+        const calls = api.mock("get", `${LIST}/${INTEGRATION_ID}`, {
+            integration: {
+                _id: INTEGRATION_ID,
+                provider: "google_drive",
+                name: "Drive de marketing",
+                enabled: true,
+            },
+        });
+        const pv = api.client();
+
+        const integration = await pv.integrations.get(ORG_ID, INTEGRATION_ID);
+
+        expect(calls[0]?.method).toBe("GET");
+        expect(integration._id).toBe(INTEGRATION_ID);
+        expect(integration.provider).toBe("google_drive");
+    });
 });

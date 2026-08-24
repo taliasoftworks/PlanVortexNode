@@ -38,6 +38,16 @@ All notable changes to this package are documented here. The format follows
   `AiSettings`, `SocialCredentialsInput`, `ClientWithOrganizations`, `Dashboard`,
   `DashboardRange`, `MetricName`, `MetricRow`, `TopPublication`, `PlanUse`, `AccountWithError`
   and the projected `DashboardPublicationRef` / `DashboardAiPlanRef`.
+- **The live test layer** (`test/live/`, phase 10): 37 tests that talk to a real PlanVortex and pin
+  what mocked tests cannot — that response envelopes still have the names this client unwraps, that
+  every domain error still arrives as an HTTP 400 with a catalogue `code`, that the token facade
+  still answers RFC 6749 shapes, and that every network in `/social_networks` has its limits,
+  capabilities and aspect ratios. It is opt-in (`.env.live`, see `.env.live.example`), never runs in
+  CI, is read-only by default, and refuses to write against production without being told twice.
+- The connection flow now has a test against the real server for the half that needs no human: the
+  temporal token is issued, it fetches the authorization links, and each credential is refused
+  exactly where it should be — app credentials get a 519 asking for links, and a temporal token gets
+  a 514 asking for another token.
 
 ### Changed
 

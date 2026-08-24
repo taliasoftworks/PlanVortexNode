@@ -236,4 +236,24 @@ describe("dashboard.use", () => {
 
         expect(use.limits.accounts).toBe(planData.accounts);
     });
+
+    it("el resumen de publicaciones va por /publications/summary y lleva el rango en la query", async () => {
+        const calls = api.mock("get", `/organizations/${ORG_ID}/publications/summary`, {
+            range: { from_date: "2026-08-01T00:00:00.000Z", to_date: "2026-08-24T00:00:00.000Z" },
+            by_day: [{ day: "2026-08-24", state: "sended", total: 2 }],
+            by_network: [{ social_network: "bluesky", total: 2 }],
+            by_state: [{ state: "sended", total: 2 }],
+        });
+        const pv = api.client();
+
+        const summary = await pv.dashboard.publications(ORG_ID, {
+            from_date: new Date("2026-08-01T00:00:00.000Z"),
+        });
+
+        //Este cuenta las publicaciones CREADAS en el rango; `summary` cuenta las publicadas. Son
+        //rutas y números distintos, y la única forma de no confundirlos es que cada uno tenga test.
+        expect(calls[0]?.path).toBe(`/organizations/${ORG_ID}/publications/summary`);
+        expect(calls[0]?.query.from_date).toEqual(["2026-08-01T00:00:00.000Z"]);
+        expect(summary.by_state[0]?.total).toBe(2);
+    });
 });

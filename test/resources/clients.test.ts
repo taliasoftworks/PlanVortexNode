@@ -224,4 +224,34 @@ describe("lo que faltaba del cliente y la organización", () => {
         expect(calls[0]?.method).toBe("DELETE");
         expect(updated._id).toBe(ORG_ID);
     });
+
+    it("cambia el nombre del cliente por su ruta directa", async () => {
+        const calls = api.mock("put", `/clients/${CLIENT_ID}`, { client });
+        const pv = api.client();
+
+        const updated = await pv.clients.update(CLIENT_ID, { name: "Nordwind" });
+
+        expect(calls[0]?.method).toBe("PUT");
+        expect(calls[0]?.body).toEqual({ name: "Nordwind" });
+        expect(updated._id).toBe(CLIENT_ID);
+    });
+
+    /**
+     * Una organización RAÍZ se toca por la ruta del cliente y una HIJA por la suya propia. Son dos
+     * rutas distintas para lo que parece la misma operación, y equivocarse compila igual.
+     */
+    it("actualiza y borra una organización raíz por la ruta del cliente", async () => {
+        const put = api.mock("put", `/clients/${CLIENT_ID}/organizations/${ORG_ID}`, { organization });
+        const removed = api.mock("delete", `/clients/${CLIENT_ID}/organizations/${ORG_ID}`, {
+            success: true,
+        });
+        const pv = api.client();
+
+        const updated = await pv.clients.updateOrganization(CLIENT_ID, ORG_ID, { name: "Panadería" });
+        await pv.clients.deleteOrganization(CLIENT_ID, ORG_ID);
+
+        expect(put[0]?.body).toEqual({ name: "Panadería" });
+        expect(updated._id).toBe(ORG_ID);
+        expect(removed[0]?.method).toBe("DELETE");
+    });
 });

@@ -57,3 +57,19 @@ jobs:
       - run: npm ci
       - run: npm run generate
       - run: git diff --exit-code src/generated openapi
+
+  coverage:
+    # Las capas 1 y 2 tienen un suelo de cobertura (vitest.config.ts). Va en un job propio y en una
+    # sola version de Node: el numero no depende del runtime, y medirlo tres veces solo alarga la CI.
+    #
+    # La capa 3 (test/live) NO esta aqui ni puede estarlo: necesita un PlanVortex de verdad y
+    # credenciales. Se lanza a mano con `npm run test:live`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage

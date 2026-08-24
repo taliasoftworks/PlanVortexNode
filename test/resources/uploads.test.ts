@@ -162,4 +162,66 @@ describe("uploads: el resto", () => {
             ],
         });
     });
+
+    /**
+     * El Blob es la forma que llega de un `fetch` o de un formulario, y es la que más fácil manda
+     * un `application/octet-stream`: un Blob construido sin `type` no tiene ninguno. El servidor
+     * decide `file_type` y `file_format` por ahí, así que se deduce del nombre antes de mandar.
+     */
+    it("acepta un Blob y le deduce el tipo del nombre cuando el Blob no lo trae", async () => {
+        const calls = api.mock("post", `/organizations/${ORG_ID}/uploads`, { upload });
+        const pv = api.client();
+
+        await pv.uploads.create(ORG_ID, {
+            file: new Blob([Buffer.from([1, 2, 3, 4])]),
+            filename: "portada.png",
+        });
+
+        expect(calls[0]?.form?.[0]).toMatchObject({ filename: "portada.png", type: "image/png", size: 4 });
+    });
+
+    it("respeta el tipo que el propio Blob ya trae", async () => {
+        const calls = api.mock("post", `/organizations/${ORG_ID}/uploads`, { upload });
+        const pv = api.client();
+
+        await pv.uploads.create(ORG_ID, {
+            file: new Blob([Buffer.from([1])], { type: "video/mp4" }),
+            filename: "clip.mp4",
+        });
+
+        expect(calls[0]?.form?.[0]?.type).toBe("video/mp4");
+    });
+
+    it("un File lleva su propio nombre y no hace falta repetirlo", async () => {
+        const calls = api.mock("post", `/organizations/${ORG_ID}/uploads`, { upload });
+        const pv = api.client();
+
+        await pv.uploads.create(ORG_ID, { file: new File([Buffer.from([1])], "hogaza.jpg") });
+
+        expect(calls[0]?.form?.[0]).toMatchObject({ filename: "hogaza.jpg", type: "image/jpeg" });
+    });
+
+    it("se niega a subir un Blob sin nombre", async () => {
+        const pv = api.client();
+
+        await expect(pv.uploads.create(ORG_ID, { file: new Blob([Buffer.from([1])]) })).rejects.toThrow(
+            /filename/,
+        );
+    });
+
+    it("se niega cuando lo que se le pasa no es ni ruta, ni Buffer, ni Blob", async () => {
+        const pv = api.client();
+
+        await expect(
+            pv.uploads.create(ORG_ID, { file: 42 as unknown as Buffer, filename: "cosa.png" }),
+        ).rejects.toThrow(/ruta/);
+    });
+
+    it("se niega a adivinar el tipo de una RUTA sin extensión conocida", async () => {
+        const pv = api.client();
+
+        await expect(pv.uploads.create(ORG_ID, { file: join(directory, "sin-extension") })).rejects.toThrow(
+            /contentType/,
+        );
+    });
 });
