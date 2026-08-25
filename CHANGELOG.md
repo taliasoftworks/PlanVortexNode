@@ -4,7 +4,16 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-08-24
+
+The first release with code in it. Every documented endpoint of the PlanVortex API has a method, the
+three test layers are in place — the third one against a real PlanVortex — and the reference is
+published. It is a `0.x` on purpose: the shape of the client is settled and pinned by tests, but
+nobody outside has used it yet, so a break before `1.0.0` is possible and would arrive written down
+in `MIGRATION.md`.
+
+The `0.0.1` already on npm carries no code. It was published on 2026-08-22 to reserve the name,
+which is the only way npm reserves one.
 
 ### Added
 

@@ -5,6 +5,11 @@
 
 # planvortex
 
+[![npm](https://img.shields.io/npm/v/planvortex.svg?color=2036d8&label=npm)](https://www.npmjs.com/package/planvortex)
+[![node](https://img.shields.io/node/v/planvortex.svg?color=2036d8)](https://nodejs.org)
+[![CI](https://github.com/taliasoftworks/PlanVortexNode/actions/workflows/ci.yml/badge.svg)](https://github.com/taliasoftworks/PlanVortexNode/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/planvortex.svg?color=2036d8)](./LICENSE)
+
 Official Node.js client for the [PlanVortex](https://planvortex.com) API: connect social accounts,
 schedule and publish posts, read comments and messages, and verify webhooks.
 
@@ -42,6 +47,12 @@ message inboxes, contacts, products, integrations, AI plans, the dashboard and t
 | 9     | The account connection flow                              | done  |
 | 10    | Three test layers, the third against a real PlanVortex   | done  |
 | 11    | Documentation: reference, examples, guides               | done  |
+| 12    | Published on npm with provenance                         | done  |
+
+The version is a `0.x` on purpose. The shape of the client is settled and pinned by tests, but
+nobody outside has used it against their own integration yet, so a break before `1.0.0` is
+possible — and would arrive written down in
+[MIGRATION.md](https://github.com/taliasoftworks/PlanVortexNode/blob/main/MIGRATION.md).
 
 ## Publishing
 
