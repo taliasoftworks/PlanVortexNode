@@ -90,6 +90,12 @@ export class AccountsResource extends Resource {
      * no un fallo: es lo que pasa con Discord en una organización que todavía no ha guardado sus
      * propias credenciales de bot.
      *
+     * **MIRA `authorization`, NO si `link` está vacío.** Nueve de las diez redes son `redirect` y se
+     * manda a la persona a `link`. **WhatsApp no es una URL**: su alta es el Embedded Signup de
+     * Meta, un popup que levantas tú con el SDK de JavaScript de Facebook, así que su `link` es
+     * cadena vacía y lo que necesitas para abrirlo viaja en `authorization` — ver {@link ConnectLink}.
+     * Recorrer la lista redirigiendo a `link` manda a tu usuario a tu propia página.
+     *
      * OJO: la red devuelve al usuario a un front de PlanVortex, no a una URL tuya — ver
      * `redirect_uri` en {@link ConnectLinksOptions}.
      */

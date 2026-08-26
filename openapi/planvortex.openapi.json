@@ -107,7 +107,7 @@
           "accounts"
         ],
         "summary": "Get the connection links of every connectable network",
-        "description": "The authorization URL of each network, so the user can connect an account to this organization.\n\n**A network that cannot produce a link simply does not appear.** That is a legitimate answer, not a failure: it is what happens with `discord` in an organization that has not saved its own bot credentials yet (see `PUT /organizations/{id_organization}/social_credentials/{social_network}`).\n\n**An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.",
+        "description": "The authorization URL of each network, so the user can connect an account to this organization.\n\n**A network that cannot produce a link simply does not appear.** That is a legitimate answer, not a failure: it is what happens with `discord` in an organization that has not saved its own bot credentials yet (see `PUT /organizations/{id_organization}/social_credentials/{social_network}`).\n\n**An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.\n\n**Read `authorization`, not `link`.** Nine of the ten networks are `redirect` and you send the person to `link`. **WhatsApp is not a URL at all**: its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.",
         "operationId": "getConnectLinks",
         "x-planvortex-identity": [
           "current_user",
@@ -656,7 +656,7 @@
           "accounts"
         ],
         "summary": "Complete the connection of a social account",
-        "description": "The endpoint the social network sends the user back to after they authorize. It turns the network's callback into one or more PlanVortex accounts.\n\n**You do not build this URL, the network does.** It is the `redirect_uri` inside the link that `GET /organizations/{id_organization}/connect_links` handed out, so the query parameters are whatever the network appends — typically `code` and `state`. Pass them through untouched.\n\n**One authorization can produce several accounts.** A Facebook user with four pages ends up with four; a Discord authorization produces the channel that was picked.\n\n**It answers 200 even when it fails.** The result carries `errorCode` and `errorMsg` instead of an error body, because the browser lands here from a redirect and a raw 400 would be a broken page. Check `errorCode`: empty means everything went well.\n\n**An app cannot call this** — it needs a user token or a temporal connect token (error 519 otherwise). See `GET /organizations/{id_organization}/temporal_connect_token`.",
+        "description": "The endpoint the social network sends the user back to after they authorize. It turns the network's callback into one or more PlanVortex accounts.\n\n**You do not build this URL, the network does.** It is the `redirect_uri` inside the link that `GET /organizations/{id_organization}/connect_links` handed out, so the query parameters are whatever the network appends — typically `code` and `state`. Pass them through untouched.\n\n**One authorization can produce several accounts.** A Facebook user with four pages ends up with four; a Discord authorization produces the channel that was picked.\n\n**It answers 200 even when it fails.** The result carries `errorCode` and `errorMsg` instead of an error body, because the browser lands here from a redirect and a raw 400 would be a broken page. Check `errorCode`: empty means everything went well.\n\n**An app cannot call this** — it needs a user token or a temporal connect token (error 519 otherwise). See `GET /organizations/{id_organization}/temporal_connect_token`.\n\n**A temporal connect token is spent here.** Once this call succeeds, that token cannot connect anything else and answers error 543; the `enable` calls that finish the same connection still work until it expires. And if the token was issued for one network, calling this for another answers error 544.",
         "operationId": "connectAccount",
         "x-planvortex-identity": [
           "current_user",
@@ -715,7 +715,7 @@
             }
           },
           "400": {
-            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `519` | This endpoint does not accept app credentials |\n| `1101` | Invalid organization, or a temporal token for a different one |",
+            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `519` | This endpoint does not accept app credentials |\n| `543` | This temporal connect token has already connected an account. Issue a new one |\n| `544` | This temporal connect token was issued for a different social network |\n| `1101` | Invalid organization, or a temporal token for a different one |",
             "content": {
               "application/json": {
                 "schema": {
@@ -782,7 +782,7 @@
             }
           },
           "400": {
-            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `700` | The account has no usable token: it has to be connected again |\n| `706` | The organization has no account slots left in its plan |\n| `519` | This endpoint does not accept app credentials |",
+            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `700` | The account has no usable token: it has to be connected again |\n| `706` | The organization has no account slots left in its plan |\n| `519` | This endpoint does not accept app credentials |\n| `544` | This temporal connect token was issued for a different social network |",
             "content": {
               "application/json": {
                 "schema": {
@@ -6340,7 +6340,7 @@
           "orgnaizations"
         ],
         "summary": "Issue a temporal connect token for an end user",
-        "description": "Returns a URL that lets **a person** connect a social account to this organization, without that person having a PlanVortex account and without your `client_secret` ever leaving your server.\n\nIt exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:\n\n1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused. So is a temporal connect token: it cannot renew itself, which is what keeps the one-hour life a real limit rather than the first link of a chain.\n2. You send your end user to the `url` that comes back, by redirect or in an iframe. The bare\n   `token` comes back too, so a server-side client can authenticate with it directly instead of\n   parsing it out of that URL.\n3. With that token the browser completes `connect_links` and `account-connect`.\n\nThe token lasts **one hour**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.\n\nIf you send `redirect_uri` it has to be one of the app's `redirect_urls`, or the call answers error 532.",
+        "description": "Returns a URL that lets **a person** connect a social account to this organization, without that person having a PlanVortex account and without your `client_secret` ever leaving your server.\n\nIt exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:\n\n1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused. So is a temporal connect token: it cannot renew itself, which is what keeps its life a real limit rather than the first link of a chain.\n2. You send your end user to the `url` that comes back, by redirect or in an iframe. The bare\n   `token` comes back too, so a server-side client can authenticate with it directly instead of\n   parsing it out of that URL.\n3. With that token the browser completes `connect_links` and `account-connect`.\n\nThe token lasts **fifteen minutes**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.\n\n**It connects once.** As soon as an `account-connect` succeeds, the token stops being able to connect anything else and answers error 543; the `enable` calls that finish that same connection keep working until it expires. Issue a new one per connection — they are free and immediate.\n\n**If you pass `social_network`, the token is bound to that network** and will not connect any other (error 544). Leave it out to let the person pick.\n\nIf you send `redirect_uri` it has to be one of the app's `redirect_urls`, or the call answers error 532.",
         "operationId": "createTemporalConnectToken",
         "x-planvortex-identity": [
           "current_app"
@@ -6359,7 +6359,7 @@
             "name": "social_network",
             "in": "query",
             "required": false,
-            "description": "Network the user is going to connect. It travels inside the returned URL.",
+            "description": "Network the user is going to connect. It travels inside the returned URL **and inside the token itself**, so the token will only connect that network (error 544 otherwise). A network outside the allowed list is rejected here with error 702.",
             "schema": {
               "$ref": "#/components/schemas/SocialNetwork"
             }
@@ -6393,7 +6393,7 @@
                     "expires_at": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "When the token stops working. One hour after it was issued."
+                      "description": "When the token stops working. Fifteen minutes after it was issued."
                     }
                   },
                   "required": [
@@ -6406,7 +6406,7 @@
             }
           },
           "400": {
-            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `514` | This endpoint needs app credentials: neither a user token nor a temporal connect token can issue one |\n| `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |\n| `1101` | Invalid organization |",
+            "description": "The request failed. The body carries the PlanVortex error code in `code`:\n\n| Code | Meaning |\n| --- | --- |\n| `514` | This endpoint needs app credentials: neither a user token nor a temporal connect token can issue one |\n| `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |\n| `702` | `social_network` is not one of the networks PlanVortex supports |\n| `1101` | Invalid organization |",
             "content": {
               "application/json": {
                 "schema": {
@@ -9351,6 +9351,43 @@
           }
         }
       },
+      "AccountsSocialAuthorizationMethod": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "**How** an account of this network is authorized, which is not always \"send the user to this URL\".\n\nNine of the ten networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. **WhatsApp is not.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.\n\nBranch on `authorization.type`, never on whether `link` is empty.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "redirect",
+              "meta_embedded_signup"
+            ],
+            "description": "`redirect`: send the user to `link`. `meta_embedded_signup`: open the Meta popup with the fields below."
+          },
+          "app_id": {
+            "type": "string",
+            "description": "`meta_embedded_signup` only. Goes to `FB.init({appId})`. It is the same Meta app whose secret PlanVortex uses to exchange the code afterwards."
+          },
+          "config_id": {
+            "type": "string",
+            "description": "`meta_embedded_signup` only. Goes to `FB.login(cb, {config_id})` — the Embedded Signup configuration."
+          },
+          "graph_version": {
+            "type": "string",
+            "description": "`meta_embedded_signup` only. Goes to `FB.init({version})`. This is the JavaScript SDK version, not the Graph version PlanVortex calls server-side: they move independently."
+          },
+          "feature_type": {
+            "type": "string",
+            "description": "`meta_embedded_signup` only. Goes to `extras.featureType`."
+          },
+          "session_info_version": {
+            "type": "string",
+            "description": "`meta_embedded_signup` only. Goes to `extras.sessionInfoVersion`."
+          }
+        }
+      },
       "AccountsSocialLinksList": {
         "type": "object",
         "properties": {
@@ -9365,12 +9402,16 @@
                 },
                 "link": {
                   "type": "string",
-                  "description": "The network's authorization URL. Send the user there."
+                  "description": "The network's authorization URL. Send the user there. **Empty when `authorization.type` is not `redirect`** — WhatsApp has no URL to give."
+                },
+                "authorization": {
+                  "$ref": "#/components/schemas/AccountsSocialAuthorizationMethod"
                 }
               },
               "required": [
                 "social_network",
-                "link"
+                "link",
+                "authorization"
               ]
             }
           }
@@ -11748,7 +11789,7 @@
           },
           "code": {
             "type": "integer",
-            "description": "PlanVortex error code. Ranges: 500-542 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations."
+            "description": "PlanVortex error code. Ranges: 500-544 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations."
           },
           "data": {
             "additionalProperties": true,

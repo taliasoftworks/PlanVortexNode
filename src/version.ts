@@ -14,4 +14,4 @@ export const PLANVORTEX_API_URL = "https://api.planvortex.com/v1.0.0";
  * de ejecución obliga a empaquetarlo y se rompe distinto en ESM y en CJS. La mantiene sincronizada
  * un test.
  */
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";

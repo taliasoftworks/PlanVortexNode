@@ -260,17 +260,29 @@ export type PersistentMenu = Schemas["AccountsPersistentMenu"];
  *
  * Las dos cosas valen: `url` es el camino alojado —se redirige al usuario y PlanVortex se encarga
  * de todo—, y `token` es el mismo credencial suelto, para pasarselo a `pv.asTemporalToken(token)`
- * y conducir el flujo desde el front propio. Caduca a la hora (`expires_at`) y sirve para UNA
- * organizacion.
+ * y conducir el flujo desde el front propio. Caduca a los quince minutos (`expires_at`), sirve para
+ * UNA organizacion y se gasta en cuanto conecta una cuenta.
  */
 export type ConnectToken =
     Operations["createTemporalConnectToken"]["responses"][200]["content"]["application/json"];
 
 /**
- * El enlace de autorizacion de UNA red. Se manda al usuario ahi y la red lo devuelve al panel de
- * PlanVortex, que es quien completa la conexion.
+ * Como se conecta UNA red. Casi siempre es un enlace: se manda al usuario ahi y la red lo devuelve
+ * al panel de PlanVortex, que es quien completa la conexion.
+ *
+ * **Casi. Mira `authorization.type` y no si `link` esta vacio.** WhatsApp no tiene URL de
+ * autorizacion: su alta es el Embedded Signup de Meta, un popup que levanta el SDK de JavaScript de
+ * Facebook desde tu pagina y que devuelve por `postMessage` datos —el `waba_id`, el
+ * `phone_number_id`— que no caben en una query string. Su `link` es cadena vacia y los parametros
+ * del popup (`app_id`, `config_id`, `graph_version`...) viajan en `authorization`.
  */
 export type ConnectLink = Schemas["AccountsSocialLinksList"]["links"][number];
+
+/**
+ * Con que se autoriza una red: `redirect` (las otras nueve) o `meta_embedded_signup` (WhatsApp).
+ * Se saca de {@link ConnectLink} y esta aqui para poder nombrarlo en un `switch`.
+ */
+export type SocialAuthorizationMethod = ConnectLink["authorization"];
 
 /**
  * Lo que dejo una autorizacion: las cuentas que se pueden dar de alta.

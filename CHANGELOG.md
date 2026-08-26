@@ -4,6 +4,45 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-26
+
+The connect flow, told straight. Two things that an integration could only get wrong before: a
+temporal connect token that lived an hour and could be replayed, and a WhatsApp entry that announced
+itself with an empty URL. Neither changes the shape of the client — no method signature moved — but
+both change what you can assume, so read **Changed** before upgrading. `MIGRATION.md` has the short
+version.
+
+### Added
+
+- **`connectLinks()` now says *how* each network is authorized**, in a new `authorization` field on
+  every entry. Nine of the ten are `{type: "redirect"}` and you send the person to `link`, as before.
+  **WhatsApp is not a URL at all** — its sign-up is Meta's Embedded Signup, a popup you raise with
+  the Facebook JavaScript SDK — so its `link` is an empty string and `authorization` carries the
+  `app_id`, `config_id`, `graph_version`, `feature_type` and `session_info_version` that
+  `FB.init`/`FB.login` need. Until now the server published that empty string and nothing else, so a
+  client looping over the list and redirecting sent its user to its own page; those values existed
+  only inside PlanVortex's own dashboard.
+  - Branch on `authorization.type`, never on whether `link` is empty. The new
+    `SocialAuthorizationMethod` type is exported for that.
+  - A `redirect` network that cannot produce a link is now **absent from the list** rather than
+    present with an empty one — the same rule that already applied to Discord without credentials.
+
+### Changed
+
+- **A temporal connect token now lasts fifteen minutes instead of an hour, and it connects once.**
+  The server was hardened (`CONNECT_TOKEN_SECRET`, a `jti` per token, single redemption); the
+  package's types, JSDoc and generated OpenAPI follow. Nothing about the client's shape changed —
+  `createConnectToken` still returns `{url, token, expires_at}` — but the assumptions around it did:
+  - `expires_at` is now ~15 minutes out. If you cache a connect token anywhere, shorten the window.
+  - Once `accounts.connect()` succeeds with a token, that token cannot connect again and answers
+    **error 543**. The `accounts.enable()` calls that finish the same connection still work until it
+    expires. Issue one token per connection — they are free and immediate.
+  - A token issued with `social_network` is now **bound** to that network: `connectLinks()` only
+    returns that one, and connecting a different network answers **error 544**.
+  - An expired connect token now answers **522** ("Invalid token: Expired") where it used to answer
+    the generic 501. `AuthError` already covered both.
+  - `PLANVORTEX_ERROR_RANGES`: the auth family is `500-544`, was `500-542`.
+
 ## [0.1.0] - 2026-08-25
 
 The first release with code in it. Every documented endpoint of the PlanVortex API has a method, the

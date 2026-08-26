@@ -38,11 +38,40 @@ describeLive("flujo de conexión", () => {
 
         expect(connect.token).toBeTruthy();
         expect(connect.url).toMatch(/^https?:\/\//);
-        //Una hora. Es lo que hace que se pueda mandar por correo a un usuario final sin que sea un
-        //credencial permanente en manos de nadie.
+        //QUINCE MINUTOS. Era una hora, y la hora no compraba nada: quien recibe esto salta de la
+        //aplicación del integrador al panel en el acto. Este número sólo lo puede confirmar la
+        //capa 3, porque lo fija el servidor y el paquete se limita a leer su `expires_at`.
         const remaining = new Date(connect.expires_at).getTime() - Date.now();
         expect(remaining).toBeGreaterThan(0);
-        expect(remaining).toBeLessThanOrEqual(61 * 60 * 1000);
+        expect(remaining).toBeLessThanOrEqual(16 * 60 * 1000);
+    });
+
+    /**
+     * La red va DENTRO del token, no sólo en la query de la URL. Antes viajaba únicamente ahí —o
+     * sea en la parte que cualquiera reescribe—, así que un token pedido "para Instagram" conectaba
+     * igual de bien un Facebook de esa organización.
+     *
+     * Los enlaces son la mitad visible de lo mismo: con un token atado, sólo sale esa red, para que
+     * el integrador no le pinte a su usuario botones que después van a contestar 544.
+     */
+    it("un token emitido para una red sólo enseña y sólo conecta esa red", async () => {
+        const connect = await live.pv.organizations.createConnectToken(live.organization._id, {
+            social_network: "instagram",
+        });
+        const guest = live.pv.asTemporalToken(connect.token);
+
+        const links = await guest.accounts.connectLinks(live.organization._id);
+        expect(links.map((link) => link.social_network)).toEqual(["instagram"]);
+
+        //Y el rechazo de verdad: pedir la conexión de OTRA red con ese token. El guardia va delante
+        //del handler, así que esto no llega a hablar con Facebook.
+        const error = await guest.accounts
+            .connect(live.organization._id, "facebook", { code: "no-llega-a-usarse" })
+            .catch((e: unknown) => e);
+
+        expect(isPlanVortexError(error)).toBe(true);
+        expect((error as PlanVortexError).code).toBe(544);
+        expect((error as PlanVortexError).status).toBe(400);
     });
 
     it("con el token temporal se piden los enlaces de autorización", async () => {
@@ -53,21 +82,47 @@ describeLive("flujo de conexión", () => {
 
         for (const link of links) {
             expect(typeof link.social_network).toBe("string");
+            //LO QUE SE MIRA ES EL MÉTODO, no si el enlace viene vacío. Ésta era la excepción escrita
+            //a mano para WhatsApp —que llega con `link: ""` porque su alta no es un OAuth sino el
+            //embedded signup de Meta— y que dejaba a cualquier integrador mandando a su usuario a
+            //su propia página. Ahora el servidor lo dice, y el que se salga de estos dos métodos
+            //rompe aquí en vez de en el navegador de alguien.
+            expect(["redirect", "meta_embedded_signup"]).toContain(link.authorization.type);
 
-            //OJO CON WHATSAPP, que llega con `link: ""`. Su alta no es un OAuth sino el embedded
-            //signup de Meta, así que su SDK devuelve cadena vacía en vez de lanzar —que es lo que
-            //hace Discord cuando no puede dar enlace, y por eso Discord sencillamente no aparece—.
-            //Un integrador que recorra la lista y redirija manda a su usuario a "", o sea a su
-            //propia página. Es un fallo del servidor, está anotado en el roadmap, y hasta que se
-            //decida qué hacer la excepción vive aquí para que el resto se siga comprobando.
-            if (link.social_network === "whatsapp") {
+            if (link.authorization.type === "meta_embedded_signup") {
+                //No hay URL que dar, pero sí todo lo que hace falta para levantar el popup.
                 expect(link.link).toBe("");
+                for (const field of ["app_id", "config_id", "graph_version", "feature_type", "session_info_version"] as const) {
+                    expect(link.authorization[field], `${field} de ${link.social_network}`).toBeTruthy();
+                }
                 continue;
             }
 
             //`link`, no `url`: es la URL de la RED, a la que se manda al usuario.
             expect(link.link, `enlace de ${link.social_network}`).toMatch(/^https?:\/\//);
         }
+    });
+
+    /**
+     * Sólo la capa 3 puede confirmar que la configuración que publicamos es la que Meta acepta: en
+     * las capas 1 y 2 el `config_id` es el que le pongamos al mock. Esto no abre el popup —hace
+     * falta una persona— pero sí comprueba que el servidor de verdad tiene la variable puesta, que
+     * es donde estuvo el fallo: `WHATSAPP_ADJUST_ID` existía en el `.env` y no la leía nadie,
+     * mientras el valor bueno vivía a pelo en el front del panel.
+     */
+    it("WhatsApp publica una configuración de Embedded Signup con pinta de serlo", async () => {
+        const links = await live.pv.asTemporalToken(token).accounts.connectLinks(live.organization._id);
+        const whatsapp = links.find((link) => link.social_network === "whatsapp");
+
+        if (!whatsapp) {
+            //Que no aparezca es legítimo: esa organización puede no tener WhatsApp disponible.
+            return;
+        }
+        expect(whatsapp.authorization.type).toBe("meta_embedded_signup");
+        //Los identificadores de Meta son numéricos, y un "CAMBIAR" del .env de ejemplo no lo es.
+        expect(whatsapp.authorization.app_id).toMatch(/^\d+$/);
+        expect(whatsapp.authorization.config_id).toMatch(/^\d+$/);
+        expect(whatsapp.authorization.graph_version).toMatch(/^v\d+\.\d+$/);
     });
 
     it("las credenciales de app NO sirven para pedir enlaces: 519", async () => {

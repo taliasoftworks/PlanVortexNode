@@ -85,6 +85,53 @@ describe("enlaces de conexión", () => {
         expect(calls[0]?.query).toEqual({ social_network: ["instagram", "bluesky"] });
         expect(links.map((link) => link.social_network)).toEqual(["instagram", "bluesky"]);
     });
+
+    /**
+     * WHATSAPP NO ES UNA URL. Su alta es el Embedded Signup de Meta —un popup que levanta quien
+     * integra, con el SDK de JavaScript de Facebook—, así que llega con `link: ""` y con los
+     * parámetros del popup en `authorization`. El servidor los publica desde hace poco; antes eran
+     * cadena vacía y nada más, y quien recorriese la lista redirigiendo mandaba a su usuario a su
+     * propia página.
+     *
+     * Aquí lo que se fija es que la librería **no toca nada**: ni filtra la entrada por venir con el
+     * enlace vacío, ni se come el bloque que no entiende.
+     */
+    it("deja pasar WhatsApp entero: link vacío y los parámetros del popup", async () => {
+        api.mock("get", `/organizations/${ORG_ID}/connect_links`, {
+            links: [
+                { social_network: "instagram", link: "https://api.instagram.com/oauth/authorize?x=1", authorization: { type: "redirect" } },
+                {
+                    social_network: "whatsapp",
+                    link: "",
+                    authorization: {
+                        type: "meta_embedded_signup",
+                        app_id: "550079163888720",
+                        config_id: "1833599127237054",
+                        graph_version: "v23.0",
+                        feature_type: "whatsapp_business_app_onboarding",
+                        session_info_version: "3",
+                    },
+                },
+            ],
+        });
+        const guest = api.client({ accessToken: TEMPORAL_TOKEN });
+
+        const links = await guest.accounts.connectLinks(ORG_ID);
+        const whatsapp = links.find((link) => link.social_network === "whatsapp");
+
+        expect(links).toHaveLength(2);
+        expect(whatsapp?.link).toBe("");
+        expect(whatsapp?.authorization).toEqual({
+            type: "meta_embedded_signup",
+            app_id: "550079163888720",
+            config_id: "1833599127237054",
+            graph_version: "v23.0",
+            feature_type: "whatsapp_business_app_onboarding",
+            session_info_version: "3",
+        });
+        //Y la de al lado sigue siendo de redirección, que es lo que se mira para saber qué hacer.
+        expect(links.find((link) => link.social_network === "instagram")?.authorization.type).toBe("redirect");
+    });
 });
 
 describe("volver de la red", () => {

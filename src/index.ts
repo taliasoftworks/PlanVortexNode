@@ -4,7 +4,7 @@
  * ESTE PAQUETE ES DE SERVIDOR. El flujo `client_credentials` exige el `client_secret`, y un secreto
  * dentro de un bundle de navegador es la cuenta entera regalada. Para que una PERSONA conecte su
  * cuenta social desde el navegador existe el token temporal de conexión
- * (`GET /organizations/{id}/temporal_connect_token`), que dura una hora, va atado a una sola
+ * (`GET /organizations/{id}/temporal_connect_token`), que dura quince minutos, va atado a una sola
  * organización y sólo puede crear cuentas.
  *
  * ```ts
@@ -254,6 +254,7 @@ export type {
     PublicationsSummary,
     PublicationsSummaryResult,
     PublicationType,
+    SocialAuthorizationMethod,
     SocialCapabilities,
     SocialCredentials,
     SocialLimits,

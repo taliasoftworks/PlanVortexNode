@@ -49,8 +49,9 @@ export const TOKEN_PATH = "/oauth/token";
  * Un token ya emitido, que no se renueva: el `temporal_connect_token` con el que una PERSONA conecta
  * su cuenta social (§ trampa 2 del roadmap).
  *
- * Dura una hora, va atado a **una** organización y no se puede refrescar — cuando caduca, la app
- * emite otro. Por eso `invalidate()` no hace nada: no hay nada que volver a pedir.
+ * Dura quince minutos, va atado a **una** organización y no se puede refrescar — cuando caduca,
+ * la app emite otro. Por eso `invalidate()` no hace nada: no hay nada que volver a pedir. Y se gasta
+ * en cuanto conecta una cuenta: el siguiente intento de conectar contesta 543.
  */
 export class StaticTokenAuth implements AuthProvider {
     constructor(private readonly token: string) {}

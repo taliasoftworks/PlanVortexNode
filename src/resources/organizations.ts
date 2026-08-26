@@ -175,7 +175,15 @@ export class OrganizationsResource extends Resource {
      *  - **`token`** — el credencial suelto, para `pv.asTemporalToken(token)` cuando la interfaz la
      *    pone el integrador.
      *
-     * Caduca en una hora y **sólo vale para esta organización**: usarlo contra otra contesta 1101.
+     * Caduca en **quince minutos** y **sólo vale para esta organización**: usarlo contra otra
+     * contesta 1101.
+     *
+     * **Y conecta una vez.** En cuanto un `accounts.connect` sale bien, ese token deja de poder
+     * conectar y contesta 543; los `accounts.enable` que rematan esa misma conexión siguen valiendo
+     * hasta que caduque. Emite uno por conexión: son gratis e inmediatos.
+     *
+     * **Si pasas `social_network`, el token queda atado a esa red** y no conecta ninguna otra (544).
+     * Sin ella, el token abre cualquiera y es la persona quien elige.
      */
     async createConnectToken(
         idOrganization: string,

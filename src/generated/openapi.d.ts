@@ -698,6 +698,8 @@ export interface paths {
          *     **It answers 200 even when it fails.** The result carries `errorCode` and `errorMsg` instead of an error body, because the browser lands here from a redirect and a raw 400 would be a broken page. Check `errorCode`: empty means everything went well.
          *
          *     **An app cannot call this** — it needs a user token or a temporal connect token (error 519 otherwise). See `GET /organizations/{id_organization}/temporal_connect_token`.
+         *
+         *     **A temporal connect token is spent here.** Once this call succeeds, that token cannot connect anything else and answers error 543; the `enable` calls that finish the same connection still work until it expires. And if the token was issued for one network, calling this for another answers error 544.
          */
         get: operations["connectAccount"];
         put?: never;
@@ -1297,6 +1299,8 @@ export interface paths {
          *     **A network that cannot produce a link simply does not appear.** That is a legitimate answer, not a failure: it is what happens with `discord` in an organization that has not saved its own bot credentials yet (see `PUT /organizations/{id_organization}/social_credentials/{social_network}`).
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
+         *
+         *     **Read `authorization`, not `link`.** Nine of the ten networks are `redirect` and you send the person to `link`. **WhatsApp is not a URL at all**: its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.
          */
         get: operations["getConnectLinks"];
         put?: never;
@@ -2028,13 +2032,17 @@ export interface paths {
          *
          *     It exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:
          *
-         *     1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused. So is a temporal connect token: it cannot renew itself, which is what keeps the one-hour life a real limit rather than the first link of a chain.
+         *     1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused. So is a temporal connect token: it cannot renew itself, which is what keeps its life a real limit rather than the first link of a chain.
          *     2. You send your end user to the `url` that comes back, by redirect or in an iframe. The bare
          *        `token` comes back too, so a server-side client can authenticate with it directly instead of
          *        parsing it out of that URL.
          *     3. With that token the browser completes `connect_links` and `account-connect`.
          *
-         *     The token lasts **one hour**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.
+         *     The token lasts **fifteen minutes**, is tied to **this** organization — using it against another answers error 1101 — and carries only two permissions: create accounts and read the organization. It is the piece designed for a browser, and the only credential of ours that belongs there.
+         *
+         *     **It connects once.** As soon as an `account-connect` succeeds, the token stops being able to connect anything else and answers error 543; the `enable` calls that finish that same connection keep working until it expires. Issue a new one per connection — they are free and immediate.
+         *
+         *     **If you pass `social_network`, the token is bound to that network** and will not connect any other (error 544). Leave it out to let the person pick.
          *
          *     If you send `redirect_uri` it has to be one of the app's `redirect_urls`, or the call answers error 532.
          */
@@ -2471,10 +2479,35 @@ export interface components {
             /** @description `default`, or a locale such as `es_ES`. */
             locale?: string;
         }[];
+        /**
+         * @description **How** an account of this network is authorized, which is not always "send the user to this URL".
+         *
+         *     Nine of the ten networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. **WhatsApp is not.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.
+         *
+         *     Branch on `authorization.type`, never on whether `link` is empty.
+         */
+        AccountsSocialAuthorizationMethod: {
+            /** @description `meta_embedded_signup` only. Goes to `FB.init({appId})`. It is the same Meta app whose secret PlanVortex uses to exchange the code afterwards. */
+            app_id?: string;
+            /** @description `meta_embedded_signup` only. Goes to `FB.login(cb, {config_id})` — the Embedded Signup configuration. */
+            config_id?: string;
+            /** @description `meta_embedded_signup` only. Goes to `extras.featureType`. */
+            feature_type?: string;
+            /** @description `meta_embedded_signup` only. Goes to `FB.init({version})`. This is the JavaScript SDK version, not the Graph version PlanVortex calls server-side: they move independently. */
+            graph_version?: string;
+            /** @description `meta_embedded_signup` only. Goes to `extras.sessionInfoVersion`. */
+            session_info_version?: string;
+            /**
+             * @description `redirect`: send the user to `link`. `meta_embedded_signup`: open the Meta popup with the fields below.
+             * @enum {string}
+             */
+            type: "redirect" | "meta_embedded_signup";
+        };
         AccountsSocialLinksList: {
             /** @description One entry per network that can be connected right now. */
             links: {
-                /** @description The network's authorization URL. Send the user there. */
+                authorization: components["schemas"]["AccountsSocialAuthorizationMethod"];
+                /** @description The network's authorization URL. Send the user there. **Empty when `authorization.type` is not `redirect`** — WhatsApp has no URL to give. */
                 link: string;
                 social_network: components["schemas"]["SocialNetwork"];
             }[];
@@ -3328,7 +3361,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-542 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
+            /** @description PlanVortex error code. Ranges: 500-544 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -6246,6 +6279,8 @@ export interface operations {
              *     | Code | Meaning |
              *     | --- | --- |
              *     | `519` | This endpoint does not accept app credentials |
+             *     | `543` | This temporal connect token has already connected an account. Issue a new one |
+             *     | `544` | This temporal connect token was issued for a different social network |
              *     | `1101` | Invalid organization, or a temporal token for a different one |
              */
             400: {
@@ -6611,6 +6646,7 @@ export interface operations {
              *     | `700` | The account has no usable token: it has to be connected again |
              *     | `706` | The organization has no account slots left in its plan |
              *     | `519` | This endpoint does not accept app credentials |
+             *     | `544` | This temporal connect token was issued for a different social network |
              */
             400: {
                 headers: {
@@ -9684,7 +9720,7 @@ export interface operations {
             query?: {
                 /** @description Where the user comes back after connecting. Has to be one of the app's `redirect_urls` (error 532). */
                 redirect_uri?: string;
-                /** @description Network the user is going to connect. It travels inside the returned URL. */
+                /** @description Network the user is going to connect. It travels inside the returned URL **and inside the token itself**, so the token will only connect that network (error 544 otherwise). A network outside the allowed list is rejected here with error 702. */
                 social_network?: components["schemas"]["SocialNetwork"];
             };
             header?: never;
@@ -9705,7 +9741,7 @@ export interface operations {
                     "application/json": {
                         /**
                          * Format: date-time
-                         * @description When the token stops working. One hour after it was issued.
+                         * @description When the token stops working. Fifteen minutes after it was issued.
                          */
                         expires_at: string;
                         /** @description The same token, on its own. This is what you pass to a client that authenticates with a temporal token; do not parse it out of `url`. */
@@ -9722,6 +9758,7 @@ export interface operations {
              *     | --- | --- |
              *     | `514` | This endpoint needs app credentials: neither a user token nor a temporal connect token can issue one |
              *     | `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |
+             *     | `702` | `social_network` is not one of the networks PlanVortex supports |
              *     | `1101` | Invalid organization |
              */
             400: {
