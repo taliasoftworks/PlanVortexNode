@@ -53,6 +53,30 @@ jobs:
           echo "OIDC disponible: ${ACTIONS_ID_TOKEN_REQUEST_URL:+si}"
           echo "whoami: $(npm whoami 2>&1 || true)"
 
+      # LOS CLAIMS QUE NPM COMPARA, tal cual se los manda GitHub.
+      #
+      # El 2026-08-26 el intercambio OIDC contesto `404 - package not found` con el trusted
+      # publisher recien creado y correcto a simple vista. Ese mensaje NO dice que falte el
+      # paquete —el GET siguiente lo encuentra— sino que ningun publicador de confianza casa con
+      # lo que se le presenta, y no dice en que campo. Esto lo pone por delante: si npm guardo
+      # `planvortexnode` en minusculas, o el workflow con su ruta entera, se ve aqui y no se ve
+      # en ningun otro sitio.
+      #
+      # NO imprime el token: se queda solo con el payload (la parte de en medio del JWT) y de ahi
+      # con los claims publicos. El token seria un credencial de verdad durante sus minutos de
+      # vida, asi que no puede acabar en un log publico.
+      - name: Claims OIDC que ve npm
+        run: |
+          url="${ACTIONS_ID_TOKEN_REQUEST_URL}"
+          auth="Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"
+          # La URL ya trae ?api-version=2.0, pero no se da por supuesto.
+          sep="&"
+          case "$url" in *'?'*) sep="&" ;; *) sep="?" ;; esac
+          token=$(curl -sS -H "$auth" "${url}${sep}audience=npm:registry.npmjs.org" | jq -r ".value")
+          payload=$(printf '%s' "$token" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
+          printf '%s' "$payload" | base64 -d | jq '{repository, repository_owner, repository_owner_id, repository_id, workflow_ref, job_workflow_ref, ref, environment, aud, iss}'
+
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
