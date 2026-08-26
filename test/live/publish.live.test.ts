@@ -18,7 +18,8 @@
  */
 import { beforeAll, expect } from "vitest";
 
-import type { Account, PublicationInput } from "../../src/index.js";
+import type { Account, PlanVortexError, PublicationInput } from "../../src/index.js";
+import { isPlanVortexError } from "../../src/index.js";
 import {
     LIVE_IMAGE_PATH,
     LIVE_VIDEO_PATH,
@@ -158,15 +159,16 @@ describeLive("publicar", () => {
             });
             expect(afterDelete.data.some((candidate) => candidate._id === publication._id)).toBe(false);
 
-            //HALLAZGO DEL SERVIDOR, no una decisión: el borrado es BLANDO y `get()` sigue
-            //devolviendo la publicación. `getPublicationById` es un `findById` pelado y
-            //`checkIdPublication` no mira `deleted` — al revés que `checkIdOrganization`, que tira
-            //1110, o que `getClientAppById`, que filtra. Para quien integra: borrar y volver a leer
-            //por id devuelve la publicación como si nada. Anotado en el roadmap; el test afirma lo
-            //que hay HOY para que el día que se arregle salga en rojo y alguien lea esto.
-            await expect(
-                live.pv.publications.get(live.organization._id, publication._id),
-            ).resolves.toBeDefined();
+            //Y tampoco se lee ya POR ID. Esto era un fallo del servidor —el borrado es blando y
+            //`getPublicationById` era un `findById` pelado, así que borrar y volver a leer por id
+            //devolvía la publicación como si nada— y se arregló el 2026-08-25: ahora filtra
+            //`deleted` y `checkIdPublication` contesta 917. Del listado ya desaparecía, que es por
+            //lo que el panel nunca lo notó y quien integra sí.
+            const gone = await live.pv.publications
+                .get(live.organization._id, publication._id)
+                .catch((e: unknown) => e);
+            expect(isPlanVortexError(gone)).toBe(true);
+            expect((gone as PlanVortexError).code).toBe(917);
         } finally {
             //Limpiar SIEMPRE, aunque una comprobación de arriba haya fallado: si no, cada ejecución
             //deja una publicación programada que un día se publica sola.

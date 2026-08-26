@@ -81,31 +81,28 @@ describeLive("flujo de conexión", () => {
     });
 
     /**
-     * HALLAZGO DEL SERVIDOR, no una decisión: **un token temporal puede emitir otro token temporal**,
-     * y el nuevo dura otra hora. Encadenándolos, el credencial no caduca nunca.
+     * ESTO FUE UN FALLO DEL SERVIDOR, y es el que encontró esta capa: **un token temporal podía
+     * emitir otro token temporal**, y el nuevo duraba otra hora. Encadenándolos, el credencial no
+     * caducaba nunca — y ese credencial viaja en una URL, en el navegador del usuario final del
+     * integrador, cuyo único modelo de seguridad era "muere en una hora".
      *
-     * El motivo está en `checkAuth`: cuando el token es temporal, el middleware rellena
-     * `temporal_token` **y también** `current_app` —lo saca del `keycloak_client_idenfifier` que
-     * viaja dentro del propio token—, así que el `requireCurrentApp` de la ruta lo da por bueno. La
-     * única ruta del servidor con ese guardia es justo ésta, así que el alcance del fallo empieza y
-     * acaba aquí; pero el token viaja en una URL, en el navegador del usuario final del integrador,
-     * y todo su modelo de seguridad era "muere en una hora".
+     * El motivo estaba en `checkAuth`: cuando el token es temporal rellena `temporal_token` **y
+     * también** `current_app` —lo saca del `keycloak_client_idenfifier` que viaja dentro del propio
+     * token—, así que el `requireCurrentApp` de la ruta lo daba por bueno. Arreglado el 2026-08-25:
+     * el guardia mira las dos cosas y un token temporal recibe el 514 que el spec ya anunciaba.
      *
-     * El test afirma lo que el servidor hace HOY, a propósito: el día que se arregle, se pone en
-     * rojo, alguien lee esto y lo cambia por el 514 que debería ser. Está anotado en el roadmap
-     * junto al endurecimiento que la fase 9 ya dejaba pendiente.
+     * O sea que este test dejó de afirmar lo que el servidor hacía para afirmar lo que debe hacer.
      */
-    it("un token temporal PUEDE emitir otro token temporal — bug conocido, debería ser un 514", async () => {
-        const renewed = await live.pv
+    it("un token temporal NO puede emitir otro token temporal: 514", async () => {
+        const error = await live.pv
             .asTemporalToken(token)
-            .organizations.createConnectToken(live.organization._id);
+            .organizations.createConnectToken(live.organization._id)
+            .catch((e: unknown) => e);
 
-        //Lo que falla es que la llamada FUNCIONE. Y de paso queda visto que dos tokens emitidos en
-        //el mismo segundo salen byte a byte idénticos: el JWT no lleva `jti`, así que sus claims son
-        //los mismos y la firma también. Es el otro motivo por el que "un solo uso" hoy no se puede
-        //ni implementar sin tocar el token.
-        expect(renewed.token).toBeTruthy();
-        expect(new Date(renewed.expires_at).getTime()).toBeGreaterThan(Date.now());
+        expect(isPlanVortexError(error)).toBe(true);
+        expect((error as PlanVortexError).code).toBe(514);
+        //Como todo error de dominio: dentro de un 400, nunca en el status. § Trampa 1.
+        expect((error as PlanVortexError).status).toBe(400);
     });
 
     it("el token temporal está atado a UNA organización", async (ctx) => {

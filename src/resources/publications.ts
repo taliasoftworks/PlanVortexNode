@@ -84,7 +84,11 @@ export class PublicationsResource extends Resource {
         );
     }
 
-    /** Una publicación, con sus ficheros y su cuenta ya resueltos. */
+    /**
+     * Una publicación, con sus ficheros y su cuenta ya resueltos.
+     *
+     * Una publicación **borrada** contesta 917, igual que una que nunca existió.
+     */
     async get(
         idOrganization: string,
         idPublication: string,
@@ -183,6 +187,9 @@ export class PublicationsResource extends Resource {
      * Borra una publicación **y también el post en la red social**.
      *
      * En X borrar cuesta créditos: sin ellos devuelve un 940 en vez de un error genérico.
+     *
+     * Después deja de leerse por id: {@link get} contesta 917, y por tanto un segundo
+     * `remove()` también.
      */
     async remove(idOrganization: string, idPublication: string, options: RequestOptions = {}): Promise<void> {
         await this.httpDelete<SuccessResponse>(this.path(idOrganization, idPublication), undefined, options);

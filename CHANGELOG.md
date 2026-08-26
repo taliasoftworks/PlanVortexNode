@@ -4,7 +4,7 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-08-24
+## [0.1.0] - 2026-08-25
 
 The first release with code in it. Every documented endpoint of the PlanVortex API has a method, the
 three test layers are in place — the third one against a real PlanVortex — and the reference is
@@ -69,6 +69,18 @@ which is the only way npm reserves one.
   a 514 asking for another token.
 
 ### Changed
+
+- **Two server behaviours the live layer caught were fixed in PlanVortex itself**, so this client
+  documents what the API does rather than what it did:
+    - A **temporal connect token can no longer issue another one**. It used to be able to, and
+      chaining the calls made a credential that never expired — one that travels in a URL, inside
+      your end user's browser, and whose entire security model was "it dies in an hour". Asking for
+      a token with a temporal token now answers **514**, which is what the specification already
+      claimed.
+    - **A deleted publication is no longer readable by identifier.** The delete is soft on the
+      server, and reading one by id used to return it as if nothing had happened while it was
+      already gone from the listing. `publications.get()` now answers **917** after a delete, and
+      so does a second `publications.remove()`.
 
 - **Apps are the Custom plan's feature, and the server now says so.** Every `/clients/{id}/apps`
   route answers the new error **542** on any other plan; it used to be 511, "a plan with at least

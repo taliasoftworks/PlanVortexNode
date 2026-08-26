@@ -164,6 +164,9 @@ export class OrganizationsResource extends Resource {
      * app** —con un token de usuario contesta 514—, mientras que los tres que vienen después
      * (`accounts.connectLinks`, `accounts.connect`, `accounts.enable`) las rechazan con un 519.
      *
+     * **Un token temporal tampoco puede pedir otro**: también contesta 514. Un credencial que se
+     * renovase a sí mismo no caducaría nunca, y éste anda suelto en el navegador de tu usuario.
+     *
      * Vuelven las dos formas del mismo credencial, y las dos sirven:
      *
      *  - **`url`** — el camino alojado. Se redirige al usuario ahí y PlanVortex se encarga de la

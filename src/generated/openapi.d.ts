@@ -1720,7 +1720,9 @@ export interface paths {
         };
         /**
          * Retrieve publication by identifier
-         * @description Retrieve publication by identifier
+         * @description Retrieve publication by identifier.
+         *
+         *     A **deleted** publication answers error 917, the same as one that never existed: the delete is soft on our side, but it is a delete for the API.
          */
         get: operations["getPublication"];
         /**
@@ -1731,7 +1733,7 @@ export interface paths {
         post?: never;
         /**
          * Delete publication by identifier
-         * @description Delete publication by identifier. For an already-sent X (Twitter) publication, removing the tweet on X is a paid action that consumes 15 X credits; it is only removed on X when there are enough credits. Returns error 940 when the X credit pool is exhausted.
+         * @description Delete publication by identifier. It stops being readable by identifier afterwards, so deleting twice answers error 917. For an already-sent X (Twitter) publication, removing the tweet on X is a paid action that consumes 15 X credits; it is only removed on X when there are enough credits. Returns error 940 when the X credit pool is exhausted.
          */
         delete: operations["deletePublication"];
         options?: never;
@@ -2026,7 +2028,7 @@ export interface paths {
          *
          *     It exists because **an app cannot connect accounts**: `connect_links` and `account-connect` refuse app credentials with error 519, since authorizing Instagram is an OAuth flow with a human in front of it. The shape of the integration is therefore:
          *
-         *     1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused.
+         *     1. Your server asks for this token — **this endpoint is the one that requires app credentials**, and a user token is refused. So is a temporal connect token: it cannot renew itself, which is what keeps the one-hour life a real limit rather than the first link of a chain.
          *     2. You send your end user to the `url` that comes back, by redirect or in an iframe. The bare
          *        `token` comes back too, so a server-side client can authenticate with it directly instead of
          *        parsing it out of that URL.
@@ -9718,7 +9720,7 @@ export interface operations {
              *
              *     | Code | Meaning |
              *     | --- | --- |
-             *     | `514` | This endpoint needs app credentials: a user token cannot issue one |
+             *     | `514` | This endpoint needs app credentials: neither a user token nor a temporal connect token can issue one |
              *     | `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |
              *     | `1101` | Invalid organization |
              */
