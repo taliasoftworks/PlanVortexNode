@@ -1,8 +1,12 @@
 name: Release
 
+# El tag es lo que publica. `workflow_dispatch` esta ademas para poder reintentar el publish sin
+# mover el tag: cuando lo que falla es la fontaneria de npm y no el codigo, retaguear cada intento
+# ensucia el historico de una release que todavia no existe.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -23,6 +27,32 @@ jobs:
       # Trusted publishing (OIDC) necesita npm >= 11.5.1, y Node 22 trae npm 10.x. Sin esta
       # linea el publish falla con un error de autenticacion que no menciona la version.
       - run: npm install -g npm@latest
+
+      # DIAGNOSTICO, y esta aqui por algo concreto: el 2026-08-25 y el 2026-08-26 el publish murio
+      # con `E404 en el PUT` —que en npm significa "no tienes permiso", no "no existe"— DESPUES de
+      # firmar la provenance correctamente. Firmar y autenticarse son dos cosas distintas: la firma
+      # sale de `id-token: write` (npm >= 9.5) y la credencial del intercambio OIDC de trusted
+      # publishing (npm >= 11.5.1). Las dos sospechas eran que el `npm install -g` de arriba no
+      # llegase a cambiar el npm del PATH, y que el .npmrc que escribe `setup-node` dejase un
+      # `_authToken` vacio que hiciera a npm saltarse el intercambio. Esto las distingue.
+      #
+      # No imprime ningun secreto: en ese fichero el token es la CADENA `${NODE_AUTH_TOKEN}` sin
+      # expandir, y no hay ningun NODE_AUTH_TOKEN en el entorno de este workflow.
+      - name: Diagnostico de npm antes de publicar
+        run: |
+          echo "node:  $(node --version)"
+          echo "npm:   $(npm --version)   <-- tiene que ser >= 11.5.1 para trusted publishing"
+          echo "which: $(which npm)"
+          echo "registry: $(npm config get registry)"
+          echo "NPM_CONFIG_USERCONFIG=${NPM_CONFIG_USERCONFIG:-<sin definir>}"
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "${NPM_CONFIG_USERCONFIG}" ]; then
+            echo "--- contenido de ese .npmrc ---"
+            cat "${NPM_CONFIG_USERCONFIG}"
+            echo "--- fin ---"
+          fi
+          echo "OIDC disponible: ${ACTIONS_ID_TOKEN_REQUEST_URL:+si}"
+          echo "whoami: $(npm whoami 2>&1 || true)"
+
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -30,4 +60,6 @@ jobs:
       - run: npm run build
       - run: npm run check:exports
       # `--provenance` firma de donde sale el tarball y npm lo enseña en la ficha del paquete.
-      - run: npm publish --provenance --access public
+      # `--loglevel verbose` mientras el publish no haya salido bien ni una sola vez: es lo unico
+      # que enseña si npm llega a intentar el intercambio OIDC o si ni lo prueba.
+      - run: npm publish --provenance --access public --loglevel verbose
