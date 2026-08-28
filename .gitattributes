@@ -1,0 +1,5 @@
+# La copia del OpenAPI que publica PlanVortexHome, byte a byte. `openapi_freshness.test.ts` la
+# compara como TEXTO contra el `public/openapi.json` de alli, asi que un `core.autocrlf=true` —lo
+# normal en Windows— la sacaria en CRLF en un clon nuevo y el test se pondria rojo sin que nadie
+# hubiera tocado el spec. La CI corre en Linux, asi que esto solo se nota en local, que es peor.
+/openapi/planvortex.openapi.json text eol=lf

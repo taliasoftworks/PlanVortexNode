@@ -43,10 +43,10 @@ jobs:
     # Los tipos se generan del OpenAPI y se COMMITEAN. Si alguien toca el spec y no regenera, el
     # paquete publica tipos que no son los de la API.
     #
-    # Aqui no esta PlanVortexHome, asi que `npm run generate` rehace los tipos a partir del paquete
-    # commiteado (`openapi/planvortex.openapi.json`) y lo que se comprueba es que se correspondan.
-    # Que el paquete corresponda al spec lo comprueba `openapi_freshness.test.ts` en la maquina de
-    # desarrollo, donde los tres repositorios viven juntos.
+    # Aqui no esta PlanVortexHome, asi que `npm run generate` rehace los tipos a partir de la copia
+    # commiteada (`openapi/planvortex.openapi.json`) y lo que se comprueba es que se correspondan.
+    # Que esa copia sea la que publica PlanVortexHome en `public/openapi.json` lo comprueba
+    # `openapi_freshness.test.ts` en la maquina de desarrollo, donde los repositorios viven juntos.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

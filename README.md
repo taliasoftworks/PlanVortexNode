@@ -131,8 +131,9 @@ const { data } = await pv.request<{ comments: Comment[]; total: number }>({
 ```
 
 These types are generated from the same OpenAPI specification the
-[documentation](https://planvortex.com/documentation) is rendered from, so they cannot describe an
-endpoint that does not exist. One deliberate exception to "generated": every enumeration that grows
+[documentation](https://planvortex.com/documentation) is rendered from — published whole at
+[planvortex.com/openapi.json](https://planvortex.com/openapi.json), if you would rather generate
+your own client — so they cannot describe an endpoint that does not exist. One deliberate exception to "generated": every enumeration that grows
 with the product — `SocialNetwork`, `PublicationState`, `FileFormat` — is **open**. The known values
 autocomplete, and a network added to PlanVortex next month does not break your build.
 
@@ -391,7 +392,7 @@ npm test             # no network, no credentials
 npm run typecheck
 npm run lint
 npm run docs         # the TypeDoc reference, into docs/
-npm run generate     # regenerate the OpenAPI bundle and the types
+npm run generate     # refresh the OpenAPI copy from PlanVortexHome and regenerate the types
 npm run check:exports  # publint + arethetypeswrong
 npm run test:live    # against a real PlanVortex; needs .env.live, and skips itself without it
 ```
