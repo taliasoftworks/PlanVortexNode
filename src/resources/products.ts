@@ -9,15 +9,18 @@
  *    estadísticas: lo que se manda y lo que vuelve es lo que documenta la Graph API.
  *  - **`total` no sirve para paginar.** En productos llega siempre a `0` (sale de un `summary` que
  *    no se pide) y en catálogos es la longitud de la página. Se pagina hasta ver una página corta.
- *  - **Un producto suelto no se puede pedir por `product_id`**: ese filtro no llega a la red
- *    (§ {@link ProductsResource.list}). Se pide el catálogo y se busca dentro.
+ *  - **Un producto suelto se pide con {@link ProductsResource.get}, no con `list()`.** Pedir uno
+ *    por su identificador va al nodo de ESE producto en Meta, así que la red contesta con el
+ *    producto y no con una lista: `items` trae un objeto, y con un objeto no se puede construir
+ *    una página.
  *  - **La cuenta tiene que ser una página con negocio detrás**: el catálogo cuelga del
  *    `business_id`, no del perfil.
  */
 import { Resource, requireId } from "./base.js";
 import type { RequestOptions } from "./base.js";
+import { NO_ERROR_CODE, PlanVortexError } from "../core/errors.js";
 import type { PageOptions } from "../core/pagination.js";
-import { iteratePages } from "../core/pagination.js";
+import { iteratePages, unwrapOne } from "../core/pagination.js";
 import type { Paginated, Product, ProductCatalog, ProductCatalogInput, ProductInput } from "../types.js";
 
 export class ProductsResource extends Resource {
@@ -25,8 +28,8 @@ export class ProductsResource extends Resource {
      * Los productos de un catálogo.
      *
      * `idCatalog` es obligatorio de hecho aunque la API lo pinte opcional: sin él la petición falla
-     * con el error 2000. Hay un `product_id` documentado para pedir uno suelto que **no funciona** —
-     * el servidor lo reenvía con un nombre que el SDK no lee—, así que no se expone aquí.
+     * con el error 2000. Para pedir **un** producto por su identificador, {@link get} — no es un
+     * argumento de aquí porque la respuesta viene con otra forma.
      *
      * ```ts
      * const { data } = await pv.products.list(orgId, accountId, catalogId, { limit: 50 });
@@ -66,6 +69,47 @@ export class ProductsResource extends Resource {
             (page) => this.list(idOrganization, idAccount, idCatalog, { ...options, ...page }),
             options,
         );
+    }
+
+    /**
+     * UN producto, por su identificador **en la red** (el de Meta, no un `_id` de PlanVortex).
+     *
+     * El servidor reenviaba ese filtro con un nombre que el SDK no lee, así que nunca llegaba a la
+     * red y la llamada moría con un 2000; se arregló el 2026-08-24 y aquí se expone desde la 0.3.0.
+     *
+     * **La respuesta viene con otra forma que la del listado.** Pedir un producto suelto va al nodo
+     * de ese producto, así que la red contesta con el producto y `items` trae un objeto. Por eso
+     * esto es un método aparte y no un argumento de {@link list}: con un objeto no se construye una
+     * página. Se acepta también una lista, que es lo que devolvería un despliegue que envolviera la
+     * respuesta, y coger el primero es mejor que reventar por la forma del sobre.
+     *
+     * ```ts
+     * const product = await pv.products.get(orgId, accountId, "7123456789012345");
+     * ```
+     */
+    async get(
+        idOrganization: string,
+        idAccount: string,
+        productId: string,
+        options: RequestOptions = {},
+    ): Promise<Product> {
+        const body = await this.httpGet<unknown>(
+            `${this.path(idOrganization, idAccount)}/products`,
+            { product_id: requireId(productId, "productId") },
+            options,
+        );
+        const content = unwrapOne<Product | Product[]>(body, "items");
+
+        if (Array.isArray(content)) {
+            if (!content.length) {
+                throw new PlanVortexError(NO_ERROR_CODE, `La red no devuelve ningún producto "${productId}".`, {
+                    family: "http",
+                    data: { product_id: productId },
+                });
+            }
+            return content[0] as Product;
+        }
+        return content;
     }
 
     /**

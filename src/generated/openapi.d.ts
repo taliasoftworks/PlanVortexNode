@@ -3571,9 +3571,15 @@ export interface components {
         /**
          * @description What you send to write a message.
          *
-         *     **`comment_message` and `publication_message` cannot be sent through this endpoint today.** Both need `in_response_external_id` — the id of the post or comment being answered — and the endpoint does not read it from the body, so the message would leave with an empty recipient. Use them only through the network's own webhook flow.
+         *     `comment_message` and `publication_message` need `in_response_external_id`, the identifier of the comment or the publication being answered ON THE NETWORK. The endpoint did not read it from the body until 2026-08-24, which left both types unreachable from the public API; it does now.
          */
         MessagesMessageInput: {
+            /**
+             * @description Required by `comment_message` and `publication_message`, and ignored by every other type (error `1510` when it is missing). It is the identifier the NETWORK gives: a comment's `external_id` or a publication's `external_identifier`, never a PlanVortex `_id`.
+             *
+             *     Only Facebook and Instagram do anything with it: `comment_message` sends a private reply to a public comment (Meta's `recipient.comment_id`) and `publication_message` attaches the post as a `MEDIA_SHARE`.
+             */
+            in_response_external_id?: string;
             message_options?: components["schemas"]["MessageOptions"];
             message_type: components["schemas"]["MessageType"];
             /** @description Required for the text-based types. Validated against `characters` in `GET /social_limits`. */
@@ -7086,8 +7092,9 @@ export interface operations {
                 /** @description The catalogue to list. **Effectively required**: without it the request fails with `ERROR_CODE_2000`. Get one from `GET .../products_catalogs`. */
                 product_catalog_id?: string;
                 /**
-                 * @deprecated
-                 * @description **Do not use: it does not reach the network.** The server forwards it under a different name than the SDK reads, so a request with only `product_id` fails with `ERROR_CODE_2000` ("catalogue or product identifier required"). Ask for the catalogue and pick the product out of the page.
+                 * @description One product, by its identifier on the network. It takes precedence over `product_catalog_id`, and one of the two has to travel or the call answers `ERROR_CODE_2000`. It used to be forwarded under a name the SDK does not read, so it never reached the network; that was fixed on 2026-08-24.
+                 *
+                 *     **The answer is shaped differently.** Asking for one product goes to that product's node, so the network answers with the product itself and `items` carries an object rather than an array. Handle both shapes, or use `product_catalog_id` and pick the product out of the page.
                  */
                 product_id?: string;
             };
@@ -7762,10 +7769,7 @@ export interface operations {
                 offset?: components["parameters"]["Contactsoffset"];
                 /** @description Full-text search over the contact's name. */
                 search?: string;
-                /**
-                 * @deprecated
-                 * @description **Do not use: it always returns an empty list.** The server compares the whole `social_identifiers` array against the network name, and the array holds objects, so nothing ever matches. Filter client-side on `social_identifiers[].social_network` until this is fixed.
-                 */
+                /** @description Only the contacts reachable on this network. It matches on `social_identifiers[].social_network`, so a contact with several channels comes back through any of them. It used to return an empty list always, because the server compared the whole array of objects against the network name; that was fixed on 2026-08-24. */
                 social_network?: components["schemas"]["SocialNetwork"];
             };
             header?: never;

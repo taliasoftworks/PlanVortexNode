@@ -482,9 +482,11 @@ export type ConversationTotals = Schemas["MessagesConversationTotals"];
 /**
  * Lo que se manda para escribir un mensaje.
  *
- * `comment_message` y `publication_message` estan en {@link MessageType} pero **no se pueden
- * enviar por aqui**: las dos necesitan el identificador de lo que responden y el endpoint no lo lee
- * del cuerpo, asi que el mensaje saldria sin destinatario.
+ * `comment_message` y `publication_message` exigen `in_response_external_id`: el identificador EN
+ * LA RED de lo que se responde —el `external_id` de un comentario, el `external_identifier` de una
+ * publicacion—, nunca un `_id` de PlanVortex, y error 1510 si falta. El endpoint no lo leia del
+ * cuerpo hasta el 2026-08-24, lo que dejaba los dos tipos fuera del alcance de la API publica; ya
+ * funcionan, en Facebook y en Instagram.
  */
 export type MessageInput = Override<
     Schemas["MessagesMessageInput"],

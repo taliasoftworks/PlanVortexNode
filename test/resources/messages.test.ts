@@ -133,6 +133,28 @@ describe("messages.send", () => {
             message_options: { template_name: "recordatorio_cita", template_language: "es" },
         });
     });
+
+    /**
+     * El endpoint no leía `in_response_external_id` del cuerpo hasta el 2026-08-24, así que los dos
+     * tipos que lo necesitan no se podían mandar por la API pública. Lo que se fija aquí es que el
+     * campo viaje: es el identificador de la RED, nunca un `_id` de PlanVortex.
+     */
+    it("comment_message viaja con el id del comentario en la red", async () => {
+        const calls = api.mock("post", THREAD, { message });
+        const pv = api.client();
+
+        await pv.messages.send(ORG_ID, ACCOUNT_ID, CONTACT_ID, {
+            message_type: "comment_message",
+            text: "Te contesto por privado",
+            in_response_external_id: "17841400000000000_18000000000000000",
+        });
+
+        expect(calls[0]?.body).toEqual({
+            message_type: "comment_message",
+            text: "Te contesto por privado",
+            in_response_external_id: "17841400000000000_18000000000000000",
+        });
+    });
 });
 
 describe("messages.unreadCount", () => {

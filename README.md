@@ -111,7 +111,7 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`                                                                                       |
 | `pv.messages`      | `conversations`, `iterateConversations`, `conversationTotals`, `list`, `iterate`, `send`, `unreadCount`, `removeByAccount`, `templates`, `createTemplate`, `deleteTemplate`                                        |
 | `pv.contacts`      | `list`, `iterate`, `get`, `create`, `update`, `merge`, `remove`, `removeAll`                                                                                                                                       |
-| `pv.products`      | `list`, `iterate`, `create`, `catalogs`, `createCatalog`                                                                                                                                                           |
+| `pv.products`      | `list`, `iterate`, `get`, `create`, `catalogs`, `createCatalog`                                                                                                                                                           |
 | `pv.integrations`  | `providers`, `list`, `iterate`, `get`, `connectLink`, `connect`, `reconnect`, `update`, `remove`, `pickerConfig`                                                                                                   |
 | `pv.aiPlans`       | `create`, `get`, `list`, `iterate`, `validate`, `retry`, `regenerate`, `remove`                                                                                                                                    |
 | `pv.dashboard`     | `summary`, `metrics`, `publications`, `topPublications`, `publicationStats`, `use`                                                                                                                                 |
@@ -133,7 +133,8 @@ const { data } = await pv.request<{ comments: Comment[]; total: number }>({
 These types are generated from the same OpenAPI specification the
 [documentation](https://planvortex.com/documentation) is rendered from — published whole at
 [planvortex.com/openapi.json](https://planvortex.com/openapi.json), if you would rather generate
-your own client — so they cannot describe an endpoint that does not exist. One deliberate exception to "generated": every enumeration that grows
+your own client — so they cannot describe an endpoint that does not exist. One deliberate
+exception to "generated": every enumeration that grows
 with the product — `SocialNetwork`, `PublicationState`, `FileFormat` — is **open**. The known values
 autocomplete, and a network added to PlanVortex next month does not break your build.
 

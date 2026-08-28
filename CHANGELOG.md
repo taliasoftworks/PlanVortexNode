@@ -4,6 +4,45 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-28
+
+Three things the API can do and this package said it could not. All three were server bugs that
+`0.1.0` audited, documented as broken and deliberately left unexposed; all three were fixed on the
+server on 2026-08-24, and until now the library kept telling you they were broken. Documenting
+something that works as broken is worse than not documenting it.
+
+Nothing was removed and no signature moved: upgrading from `0.2.0` needs no changes.
+
+### Added
+
+- **`products.get(idOrganization, idAccount, productId)`** — one product, by its identifier **on
+  the network** (Meta's, not a PlanVortex `_id`). It is a method of its own rather than an argument
+  on `list()` because the answer comes back a different shape: asking for one product goes to that
+  product's own node, so the network answers with the product and `items` carries an object, and a
+  page cannot be built out of an object. A list is accepted too — that is what a deployment
+  wrapping the response would return — and the first element is taken.
+- **`contacts.list()` and `contacts.iterate()` take `social_network`** — only the contacts
+  reachable on that network. It matches on `social_identifiers[].social_network`, so a contact with
+  several channels comes back through any of them. It used to return an empty list always, because
+  the server compared the whole array of objects against the network name.
+- **`MessageInput.in_response_external_id`**, which makes `comment_message` and
+  `publication_message` reachable from `messages.send()` for the first time. It is the identifier
+  the NETWORK gives — a comment's `external_id`, a publication's `external_identifier` — never a
+  PlanVortex `_id`, and error `1510` without it. Only Facebook and Instagram do anything with it:
+  `comment_message` sends a private reply to a public comment and `publication_message` attaches
+  the post as a `MEDIA_SHARE`.
+
+### Changed
+
+- The OpenAPI document is no longer assembled inside this package. Joining the per-section
+  specifications now happens where the specification lives — PlanVortexHome, which publishes the
+  whole thing at [planvortex.com/openapi.json](https://planvortex.com/openapi.json) — and this
+  repository keeps a committed copy of it. With a second official library, an assembler living in
+  one of them meant two copies of the same code, and two copies drift in silence.
+  `npm run generate` now refreshes that copy and regenerates the types; without PlanVortexHome
+  beside it, point `PLANVORTEX_OPENAPI` at the published URL. Nothing about the installed package
+  changes.
+
 ## [0.2.0] - 2026-08-26
 
 The connect flow, told straight. Two things that an integration could only get wrong before: a

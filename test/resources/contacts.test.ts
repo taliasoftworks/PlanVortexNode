@@ -57,6 +57,20 @@ describe("contacts.list", () => {
             "extra_data[1][value]": ["vip", "mayorista"],
         });
     });
+
+    /**
+     * Este filtro devolvía siempre una lista vacía —el servidor comparaba el array entero de
+     * `social_identifiers` contra el nombre de la red— y por eso la librería no lo exponía. Se
+     * arregló en el servidor el 2026-08-24; lo que este test fija es que VIAJE.
+     */
+    it("manda el filtro por red", async () => {
+        const calls = api.mock("get", LIST, { contacts: [contact], total: 1 });
+        const pv = api.client();
+
+        await pv.contacts.list(ORG_ID, { social_network: "whatsapp", limit: 50 });
+
+        expect(calls[0]?.query).toEqual({ social_network: ["whatsapp"], limit: ["50"] });
+    });
 });
 
 describe("contacts.get", () => {

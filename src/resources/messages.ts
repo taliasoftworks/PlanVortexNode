@@ -179,6 +179,13 @@ export class MessagesResource extends Resource {
      * En Facebook e Instagram sólo se admite **un** adjunto por mensaje (error 1509), y en WhatsApp
      * fuera de la ventana de 24 horas sólo se admite una plantilla.
      *
+     * `comment_message` y `publication_message` exigen `in_response_external_id`: el identificador
+     * EN LA RED de lo que se responde —el `external_id` de un comentario, el `external_identifier`
+     * de una publicación—, nunca un `_id` de PlanVortex, y error 1510 si falta. El endpoint no lo
+     * leía del cuerpo hasta el 2026-08-24, lo que dejaba los dos tipos fuera del alcance de la API
+     * pública; ya funcionan, y sólo en Facebook e Instagram: `comment_message` manda una respuesta
+     * privada a un comentario público y `publication_message` adjunta el post como `MEDIA_SHARE`.
+     *
      * ```ts
      * await pv.messages.send(orgId, accountId, contactId, {
      *     message_type: "simple_message",

@@ -20,7 +20,14 @@ import { Resource, requireId } from "./base.js";
 import type { Query, RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
-import type { Contact, ContactCreate, ContactExtraData, ContactUpdate, Paginated } from "../types.js";
+import type {
+    Contact,
+    ContactCreate,
+    ContactExtraData,
+    ContactUpdate,
+    Paginated,
+    SocialNetwork,
+} from "../types.js";
 
 /** Un filtro por un campo propio del contacto. Un array de valores se lee como "cualquiera de". */
 export interface ContactExtraFilter {
@@ -36,15 +43,25 @@ export interface ContactListOptions extends PageOptions {
     search?: string | undefined;
     /** Filtros por los campos propios de `extra_data`. Se combinan con Y. */
     extra_data?: readonly ContactExtraFilter[] | undefined;
+    /**
+     * Sólo los contactos localizables en esa red. Casa contra
+     * `social_identifiers[].social_network`, así que un contacto con varios canales vuelve por
+     * cualquiera de ellos.
+     */
+    social_network?: SocialNetwork | undefined;
 }
 
 export class ContactsResource extends Resource {
     /**
      * La agenda de la organización, de la más reciente a la más antigua.
      *
-     * **No hay filtro por red que funcione.** El servidor acepta un `social_network` que compara el
-     * array `social_identifiers` entero contra el nombre de la red, así que no casa nunca y la lista
-     * vuelve vacía; por eso este método no lo expone. Filtra sobre `social_identifiers` en memoria.
+     * `social_network` acota a los contactos localizables en esa red. Devolvía siempre una lista
+     * vacía —el servidor comparaba el array entero de `social_identifiers` contra el nombre de la
+     * red— hasta que se arregló el 2026-08-24; hasta la 0.3.0 este método no lo exponía.
+     *
+     * ```ts
+     * const { data } = await pv.contacts.list(orgId, { social_network: "whatsapp", limit: 50 });
+     * ```
      */
     async list(
         idOrganization: string,
@@ -174,6 +191,7 @@ function listQuery(options: ContactListOptions): Query {
         offset: options.offset,
         limit: options.limit,
         search: options.search,
+        social_network: options.social_network,
     };
     options.extra_data?.forEach((filter, index) => {
         query[`extra_data[${index}][key]`] = filter.key;

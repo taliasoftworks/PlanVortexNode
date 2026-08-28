@@ -77,6 +77,46 @@ describe("products.list", () => {
     });
 });
 
+/**
+ * `get()` existe por una asimetría de Meta, no por comodidad: pedir un producto suelto va al nodo
+ * de ESE producto, así que `items` trae un objeto y no una lista. Con un objeto no se construye
+ * una `Page`, que es justo por lo que no es un argumento de `list()`.
+ */
+describe("products.get", () => {
+    it("manda `product_id` sin catálogo y acepta el objeto suelto", async () => {
+        const calls = api.mock("get", `${BASE}/products`, { items: product });
+        const pv = api.client();
+
+        const found = await pv.products.get(ORG_ID, ACCOUNT_ID, product.id);
+
+        expect(calls[0]?.query).toEqual({ product_id: [product.id] });
+        expect(found.id).toBe(product.id);
+    });
+
+    /** Un despliegue que envolviera la respuesta devolvería la lista: coger el primero es mejor
+     *  respuesta que reventar por la forma del sobre. */
+    it("acepta también una lista y coge el primero", async () => {
+        api.mock("get", `${BASE}/products`, { items: [product], total: 0 });
+        const pv = api.client();
+
+        expect((await pv.products.get(ORG_ID, ACCOUNT_ID, product.id)).id).toBe(product.id);
+    });
+
+    it("una lista vacía es un error, no un `undefined`", async () => {
+        api.mock("get", `${BASE}/products`, { items: [], total: 0 });
+        const pv = api.client();
+
+        await expect(pv.products.get(ORG_ID, ACCOUNT_ID, product.id)).rejects.toThrow(/ningún producto/);
+    });
+
+    it("sin identificador no llega a salir a la red", async () => {
+        const pv = api.client();
+
+        await expect(pv.products.get(ORG_ID, ACCOUNT_ID, "")).rejects.toThrow(/productId/);
+        expect(api.calls).toHaveLength(0);
+    });
+});
+
 describe("products.create", () => {
     it("manda el producto en el cuerpo y el catálogo en la query, y devuelve el id", async () => {
         const calls = api.mock("post", `${BASE}/products`, { product_id: product.id });
