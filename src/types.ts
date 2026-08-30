@@ -112,8 +112,9 @@ export type FileFormat = OpenEnum<Schemas["Upload"]["file_format"]>;
  * Sobre que se divide el engagement de una publicacion.
  *
  * No todas las redes dan alcance, asi que se cae en cascada: `reach`, si no `impressions`, si no
- * `followers` (que es lo unico que hay en Bluesky y en Discord). **Dos filas con base distinta no
- * son comparables**: si las pones en la misma tabla, di cual es.
+ * `followers` (que es lo unico que hay en Bluesky, en Discord y en Telegram — la Bot API no
+ * publica impresiones, ni alcance, ni siquiera las vistas de un post). **Dos filas con base
+ * distinta no son comparables**: si las pones en la misma tabla, di cual es.
  */
 export type EngagementBase = OpenEnum<
     NonNullable<Schemas["PublicationsPublicationStatsPoint"]["engagement_base"]>
@@ -128,12 +129,21 @@ export type EngagementBase = OpenEnum<
  *
  * Los publica el servidor, que es quien los valida. Bluesky lleva **dos** cuentas distintas del
  * mismo texto —300 grafemas en `characters` y 3.000 bytes en `max_post_bytes`— porque `.length`
- * miente en las dos direcciones. Un `0` en `max_post_bytes`, `comment_characters` o
+ * miente en las dos direcciones. Telegram lleva **dos numeros para el mismo campo**, y ese si se
+ * cuenta con `.length`: `characters.telegram` (4.096) mientras la publicacion es solo texto y
+ * `characters.telegram_media` (1.024) en cuanto lleva imagen o video, porque entonces el texto es
+ * el pie de un medio y no un mensaje. Un `0` en `max_post_bytes`, `comment_characters` o
  * `title_characters` significa "esta red no mide eso", no "cero".
  */
 export type SocialLimits = Schemas["CatalogSocialLimits"];
 
-/** Un numero por red, con TODAS las redes presentes. Lo obliga el conformance del servidor. */
+/**
+ * Un numero por red, con TODAS las redes presentes. Lo obliga el conformance del servidor.
+ *
+ * **Y alguna clave no es una red**: cuando el tope depende del TIPO de publicacion y no solo de la
+ * red, aparece una clave compuesta al lado de la simple —`instagram_story`, `facebook_reel`,
+ * `telegram_media`—. Lee la simple por defecto y la compuesta cuando toque.
+ */
 export type SocialLimitsMap = Schemas["CatalogSocialLimitsMap"];
 
 /** Los recortes que acepta una red, como numero y como se escribe. Indices paralelos. */
@@ -157,8 +167,13 @@ export type SocialCapabilities = Schemas["CommentsSocialCapabilities"];
  * Que se puede hacer con los comentarios de una red, una a una.
  *
  * No basta con saber que la red tiene comentarios: Instagram, X y Bluesky no dejan borrar el de
- * otro, LinkedIn no tiene "ocultar" y Google Business solo deja borrar **nuestra propia**
- * respuesta. Se pide en `GET /social_comment_actions`, y es lo que decide que botones se pintan.
+ * otro, LinkedIn no tiene "ocultar" —ni Discord ni Telegram tampoco— y Google Business solo deja
+ * borrar **nuestra propia** respuesta. Se pide en `GET /social_comment_actions`, y es lo que
+ * decide que botones se pintan.
+ *
+ * OJO: es de la RED, no de una cuenta suya. Un canal de Telegram sin grupo de debate contesta 965
+ * en sus comentarios aunque la red los tenga, y borrar alli necesita ademas que el bot sea
+ * administrador de ese grupo (error 969 si no).
  */
 export type CommentActions = Schemas["CommentsCommentActions"];
 
@@ -225,9 +240,14 @@ export type ClientWithOrganizations =
 /**
  * Una cuenta social conectada a una organizacion.
  *
- * En Discord una cuenta es un **canal**, no un perfil: publicar en dos canales del mismo servidor
- * gasta dos cuentas del plan. `error_code` distinto de 0 significa que la conexion se rompio —
- * token caducado, permisos retirados— y hay que reconectarla.
+ * En Discord y en Telegram una cuenta es un **canal**, no un perfil: publicar en dos canales del
+ * mismo servidor —o en dos canales de la misma marca— gasta dos cuentas del plan. `error_code`
+ * distinto de 0 significa que la conexion se rompio —token caducado, permisos retirados— y hay que
+ * reconectarla; en Telegram no caduca nada, porque no hay token de cuenta, y lo que la rompe es que
+ * saquen al bot del canal o le quiten el permiso de publicar (error 968).
+ *
+ * Y un canal de Telegram **privado** no trae `username`: solo los publicos tienen `@nombre`, que es
+ * tambien por lo que sus publicaciones vuelven sin `url`.
  */
 export type Account = Override<
     Schemas["Account"],
@@ -270,17 +290,36 @@ export type ConnectToken =
  * Como se conecta UNA red. Casi siempre es un enlace: se manda al usuario ahi y la red lo devuelve
  * al panel de PlanVortex, que es quien completa la conexion.
  *
- * **Casi. Mira `authorization.type` y no si `link` esta vacio.** WhatsApp no tiene URL de
- * autorizacion: su alta es el Embedded Signup de Meta, un popup que levanta el SDK de JavaScript de
- * Facebook desde tu pagina y que devuelve por `postMessage` datos —el `waba_id`, el
- * `phone_number_id`— que no caben en una query string. Su `link` es cadena vacia y los parametros
- * del popup (`app_id`, `config_id`, `graph_version`...) viajan en `authorization`.
+ * **Casi. Mira `authorization.type` y no si `link` esta vacio.** Hay DOS excepciones, y ninguna de
+ * las dos falla de forma visible si se tratan como una redireccion:
+ *
+ *  - **WhatsApp no tiene URL de autorizacion.** Su alta es el Embedded Signup de Meta, un popup que
+ *    levanta el SDK de JavaScript de Facebook desde tu pagina y que devuelve por `postMessage`
+ *    datos —el `waba_id`, el `phone_number_id`— que no caben en una query string. Su `link` es
+ *    cadena vacia y los parametros del popup (`app_id`, `config_id`, `graph_version`...) viajan en
+ *    `authorization`.
+ *  - **Telegram tiene enlace y aun asi no es una redireccion.** Ese `link` abre un chat con el bot
+ *    de PlanVortex, y de ahi no vuelve nadie: no hay OAuth, no hay `code` y no hay `redirect_uri`.
+ *    La cuenta nace minutos despues, cuando la persona mete el bot en su canal, y se anuncia por el
+ *    WebSocket. Abrelo en otra pestana y sigue escuchando; redirige a el y no queda a quien avisar.
  */
 export type ConnectLink = Schemas["AccountsSocialLinksList"]["links"][number];
 
 /**
- * Con que se autoriza una red: `redirect` (las otras nueve) o `meta_embedded_signup` (WhatsApp).
- * Se saca de {@link ConnectLink} y esta aqui para poder nombrarlo en un `switch`.
+ * Con que se autoriza una red: `redirect` (nueve de las once), `meta_embedded_signup` (WhatsApp) o
+ * `telegram_bot` (Telegram). Se saca de {@link ConnectLink} y esta aqui para poder nombrarlo en un
+ * `switch`.
+ *
+ * **Es una union disfrazada de un solo tipo**: OpenAPI no sabe decir "estos campos solo cuando
+ * `type` vale tal", asi que todos llegan opcionales y hay que ramificar por `type` antes de
+ * leerlos. En `telegram_bot` los dos que vienen son `bot_username` —el `@nombre` del bot, sin la
+ * arroba— y `add_to_group_link`, que es el SEGUNDO paso y no se deduce del primero: `link` abre la
+ * lista de canales y este la de grupos, y es el que enciende los comentarios metiendo al bot en el
+ * grupo de debate del canal. Ese paso es opcional para el usuario —publicar y medir funcionan sin
+ * el—, pero sin darlo el canal no tiene bandeja (error 965).
+ *
+ * Y **la lista crece**: un `type` que esta version no conozca se salta, que es una respuesta
+ * honesta. Mandar a alguien a un `link` porque el `if/else` no cubria su caso, no.
  */
 export type SocialAuthorizationMethod = ConnectLink["authorization"];
 
@@ -339,6 +378,11 @@ export type FileProperties = Schemas["FileProperties"];
  *
  * Si `state` es `withErrors`, el motivo esta en `publication_errors` —que es un ARRAY— y su `code`
  * es un codigo del catalogo de PlanVortex, nunca un status HTTP.
+ *
+ * Y OJO EN TELEGRAM: un album es UNA publicacion que son VARIOS mensajes. `external_identifier` es
+ * el primero y el resto viajan en `extra_data.telegram_message_ids`, que es el unico sitio donde
+ * hoy escribe nadie ese campo. En un canal privado ademas no hay `url`, porque no hay `@nombre` que
+ * poner en ella, y eso no significa que la publicacion fallara.
  */
 export type Publication = Override<
     Schemas["Publication"],
@@ -379,7 +423,14 @@ export type PublicationInput = Override<
     }
 >;
 
-/** El desglose crudo de metricas que da la red, que no es el mismo en dos redes cualesquiera. */
+/**
+ * El desglose crudo de metricas que da la red, que no es el mismo en dos redes cualesquiera.
+ *
+ * En Telegram son dos, y **ninguna de las dos se pide**: la Bot API no tiene ningun metodo que
+ * devuelva las metricas de un mensaje. `reactions` llega sola por el bot —y es el ESTADO COMPLETO,
+ * no un incremento, asi que baja cuando alguien retira la suya—, y `comments` se cuenta en la
+ * bandeja de PlanVortex. No hay impresiones, ni alcance, ni vistas, ni reenvios en ninguna parte.
+ */
 export type PublicationStats = Schemas["PublicationStats"];
 
 /** Las metricas comparables entre redes: las que se pueden sumar en una grafica. */
@@ -419,7 +470,14 @@ export type PublicationStatsPoint = Override<
  *    asi que se pinta el `rating` al lado en vez de dar la fila por rota.
  *
  * De lo nuestro solo son `read` y `replied`. Todo lo demas lo manda la red, y una lectura en vivo
- * pisa lo guardado.
+ * pisa lo guardado — menos en Telegram, que no tiene lectura en vivo (§ {@link
+ * CommentsResource.thread}).
+ *
+ * Y `external_id` **es opaco**: no siempre es el identificador de la red a secas. Una respuesta de
+ * Google Business no tiene identificador propio —es un CAMPO de la resena— y viaja como
+ * `{reviewId}/reply`; un comentario de Telegram vive en OTRO chat que el post que contesta (el
+ * grupo de debate del canal), asi que necesita dos identificadores a la vez y viaja como
+ * `{thread}/{message}`. No lo partas: pasalo tal cual.
  */
 export type Comment = Override<
     Schemas["CommentsComment"],

@@ -700,6 +700,8 @@ export interface paths {
          *     **An app cannot call this** — it needs a user token or a temporal connect token (error 519 otherwise). See `GET /organizations/{id_organization}/temporal_connect_token`.
          *
          *     **A temporal connect token is spent here.** Once this call succeeds, that token cannot connect anything else and answers error 543; the `enable` calls that finish the same connection still work until it expires. And if the token was issued for one network, calling this for another answers error 544.
+         *
+         *     **Telegram does not come through here, and cannot be made to.** That network has no callback: the account is created by PlanVortex when the bot is added to a channel, and what authorizes it is a single-use voucher minted at that moment and spent in the same breath — it never leaves the server, so calling this endpoint for `telegram` answers error 700. It is deliberate: the bot is shared, so without it anyone could hang any channel where that bot is an admin off their own organization by passing a chat id by hand. What an integration listens for instead is the `new_account` webhook notification.
          */
         get: operations["connectAccount"];
         put?: never;
@@ -1179,7 +1181,9 @@ export interface paths {
          * The inbox: first-level comments across the whole organization
          * @description Served from PlanVortex's database, so it costs nothing and calls no social network. It is a **snapshot**: `collected_date` says when each row was last read. Open a thread to see what the network says right now.
          *
-         *     Ordered by `creation_date` descending — the date on the network, not the date we collected it — so rows from six networks interleave correctly.
+         *     Ordered by `creation_date` descending — the date on the network, not the date we collected it — so rows from nine networks interleave correctly.
+         *
+         *     **On `telegram` the inbox starts the day the channel was connected.** The Bot API has no way to read the past: a bot only learns what happens while it is inside, so nothing written before the connection exists here and never will. Say so in your UI — an inbox that opens empty on a busy channel reads like a failure.
          *
          *     **Your own replies are not in here.** Anything with `author.is_own: true` is filtered out: what you wrote is not incoming mail. They are still stored, and they do show up in the thread.
          *
@@ -1220,6 +1224,8 @@ export interface paths {
          *     Which comments you may delete depends on the network and on whose comment it is, and the two cases use different permissions of the network's own: `delete_own` for yours, `delete_others` for somebody else's. Instagram and X refuse the second; **on Google Business the only thing that can be deleted is your own reply**, never a review. Reading `GET /social_comment_actions` first is the difference between a button that works and one that always errors.
          *
          *     On X this costs credits.
+         *
+         *     On `telegram` both are allowed by the network and both depend on a permission the customer controls: the bot has to be an administrator of the discussion group with the right to delete. When it is not, the answer is error 969 — which is the difference between "this network cannot" and "this particular channel cannot".
          *
          *     Requires the `comments:delete` permission (`client_organization_comments:delete` for apps) and a paid plan.
          */
@@ -1276,6 +1282,8 @@ export interface paths {
          *
          *     **On X this costs credits**: 15, or 200 if the text contains a link, charged only on success.
          *
+         *     **On `telegram` the reply is signed by the PlanVortex bot**, not by the channel. It is written in the channel's linked discussion group, which is where Telegram keeps the comments on a channel post — and a channel with no discussion group has no comments at all, which is error 965. Publishing is not affected: a channel post is signed by the channel.
+         *
          *     Requires the `comments:create` permission (`client_organization_comments:create` for apps) and a paid plan.
          */
         post: operations["replyComment"];
@@ -1300,7 +1308,10 @@ export interface paths {
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
          *
-         *     **Read `authorization`, not `link`.** Nine of the ten networks are `redirect` and you send the person to `link`. **WhatsApp is not a URL at all**: its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.
+         *     **Read `authorization`, not `link`.** Nine of the eleven networks are `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
+         *
+         *     • **WhatsApp is not a URL at all.** Its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.
+         *     • **Telegram has a link and still is not a redirect.** It opens a chat with the PlanVortex bot, and nobody comes back from it: the account is born minutes later, from the bot being added to a channel, and it is announced over the WebSocket. Open it in another tab and keep listening; redirect to it and there is nobody left to tell.
          */
         get: operations["getConnectLinks"];
         put?: never;
@@ -1738,6 +1749,8 @@ export interface paths {
         /**
          * Delete publication by identifier
          * @description Delete publication by identifier. It stops being readable by identifier afterwards, so deleting twice answers error 917. For an already-sent X (Twitter) publication, removing the tweet on X is a paid action that consumes 15 X credits; it is only removed on X when there are enough credits. Returns error 940 when the X credit pool is exhausted.
+         *
+         *     **On Telegram there is a 48-hour window.** Past it the Bot API refuses to delete a message whatever the bot's role is, and the answer is error 966 with `published_date` and `max_hours` in `data` — so the sensible thing is to grey the button out rather than offer it and fail. Error 969 is the other case: the bot is no longer allowed to delete there. And an album is several messages: all of them go, or the post would be left half-published in the channel.
          */
         delete: operations["deletePublication"];
         options?: never;
@@ -1759,6 +1772,8 @@ export interface paths {
          *     **On X this call costs money.** X bills per unit read, so the response carries `credits_consumed` with what this particular read spent from the client's monthly pool. It is `0` on every other network. Charging happens after the read and by real units: a failed call charges nothing, and a page with three replies is not charged for fifty.
          *
          *     Use this one when the comment has an `id_publication`. When it does not — a review hangs off a listing — use the per-account endpoint instead.
+         *
+         *     **On `telegram` it is not live**, and that is the one exception to everything above: there is no endpoint in the Bot API that lists the replies to a post, so this returns PlanVortex's own inbox — what the bot has seen since the channel was connected. Nothing is reconciled and nothing is swept as deleted, because there is nothing to compare against.
          *
          *     Requires the `comments:read` permission (`client_organization_comments:read` for apps) and a paid plan.
          */
@@ -2254,7 +2269,9 @@ export interface paths {
          *
          *     `comments` is the coarse gate — whether the network has comments at all. Which *actions* it allows on one is a finer question and lives in `GET /social_comment_actions`, because the shape here is `{[capability]: boolean}` and nesting an object inside would break it.
          *
-         *     Today six networks answer `comments: true`: Facebook, Instagram, LinkedIn, X, YouTube and Google Business. TikTok and WhatsApp answer `false`, for reasons of theirs and not ours.
+         *     Today nine networks answer `comments: true`: Facebook, Instagram, LinkedIn, X, YouTube, Google Business, Bluesky, Discord and Telegram. TikTok and WhatsApp answer `false`, for reasons of theirs and not ours.
+         *
+         *     A `true` here is about the **network**, not about one account of it: a Telegram channel with no linked discussion group answers 965 on its comments even though the network has them.
          *
          *     Only needs authentication.
          */
@@ -2290,6 +2307,7 @@ export interface paths {
          *     | `google_business` | yes | **no** | yes — **your reply**, never the review | **no** |
          *     | `bluesky` | yes | yes — through the post's `threadgate` | yes | **no** — the reply lives in somebody else's repository |
          *     | `discord` | yes | **no** — Discord has no hide, only delete | yes | yes |
+         *     | `telegram` | yes | **no** — Telegram has no hide either | yes | yes — with the bot as an admin of the discussion group, otherwise error 969 |
          *     | `tiktok`, `whatsapp` | no | no | no | no |
          *
          *     Only needs authentication.
@@ -2319,6 +2337,7 @@ export interface paths {
          *     • **`characters` is not always the only text limit.** Bluesky counts 300 *graphemes* **and** 3.000 *bytes*; the second one travels in `max_post_bytes`, where `0` means "this network does not measure text in bytes". A family emoji is one grapheme and eleven UTF-16 units, so counting with `String.length` is wrong in both directions.
          *     • **`0` in `title_characters` means the network has no title field**, not a title of zero length.
          *     • **`comment_characters` is a different limit from `characters`.** Facebook takes 63.206 in a post and 8.000 in a comment.
+         *     • **`characters` is not one number per network either.** Telegram takes 4.096 in a text post and **1.024** in the caption of a photo or a video, and it is the same composer field: the second number is the key `telegram_media`. Over the limit the publication is created in state `withErrors` with `publication_errors[].code = 967`, which carries `characters`, `max_characters` and `has_media`.
          *     • Every network in `/social_networks` appears in every map. A missing key is a bug, and the backend's conformance suite fails on it.
          */
         get: operations["getSocialLimits"];
@@ -2403,9 +2422,9 @@ export interface components {
         /**
          * @description A social account connected to an organization.
          *
-         *     On `discord` an account is a **channel**, not a profile: publishing to two channels of the same server costs two accounts of the plan.
+         *     On `discord` and on `telegram` an account is a **channel**, not a profile: publishing to two Discord channels of the same server — or to two Telegram channels of the same brand — costs two accounts of the plan.
          *
-         *     `error_code` other than `0` means the connection is broken — an expired token, a permission taken away — and the account has to be connected again.
+         *     `error_code` other than `0` means the connection is broken — an expired token, a permission taken away — and the account has to be connected again. On `telegram` nothing expires, because there is no account token: what breaks the connection is the bot being removed from the channel or losing its permission to post there (error 968).
          */
         Account: {
             _id: string;
@@ -2413,7 +2432,7 @@ export interface components {
             creation_date: string;
             /** @description `0` is a healthy account. Anything else is a PlanVortex error code explaining why the connection stopped working; the account keeps its data but cannot be used until it is reconnected. */
             error_code: number;
-            /** @description Followers the network reports. Absent on an account that has never been measured. */
+            /** @description Followers the network reports. Absent on an account that has never been measured. On `telegram` it is the channel's member count, and it is the **only** audience figure that network publishes: there are no views, no impressions and no reach anywhere in the Bot API. */
             followers_count?: number;
             /** @description The client the organization hangs from. Denormalized here for the plan checks. */
             id_client: string;
@@ -2436,7 +2455,7 @@ export interface components {
             private_message_link?: string;
             /** @description Network this account belongs to. **Not every network publishes**: `whatsapp` is a messaging channel with no feed, and `google_business` is a local business listing that receives reviews — both can be connected and both appear here, but neither accepts publications (see `GET /social_capabilities`). */
             social_network: components["schemas"]["SocialNetwork"];
-            /** @description The handle, when the network has one. Absent on the networks that do not (a Discord channel, a WhatsApp number, a Google Business listing). */
+            /** @description The handle, when the network has one. Absent on the networks that do not (a Discord channel, a WhatsApp number, a Google Business listing) and on a **private** Telegram channel, which has no `@name` at all — only public ones do. That is also why a private channel's publications come back with no `url`. */
             username?: string;
         };
         AccountsAccountList: {
@@ -2482,13 +2501,20 @@ export interface components {
         /**
          * @description **How** an account of this network is authorized, which is not always "send the user to this URL".
          *
-         *     Nine of the ten networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. **WhatsApp is not.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.
+         *     Nine of the eleven networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
+         *
+         *     • **WhatsApp.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.
+         *     • **Telegram.** There is no OAuth here: no consent screen, no `code`, no account token. `link` opens a private chat with the PlanVortex bot, the person then adds that bot to their channel, and **the account is created from that event**, not from any request of yours. Which means the connection cannot be finished by calling `GET /organizations/{id_organization}/account-connect/telegram` — see that endpoint.
          *
          *     Branch on `authorization.type`, never on whether `link` is empty.
          */
         AccountsSocialAuthorizationMethod: {
+            /** @description `telegram_bot` only. The **second** step, and it does not follow from the first: `link` opens the list of channels and this one opens the list of groups. It adds the bot to the channel's linked discussion group, which is what turns comments on — a Telegram channel with no discussion group has no comment inbox at all (error 965). Optional for the user: publishing and statistics work without it. */
+            add_to_group_link?: string;
             /** @description `meta_embedded_signup` only. Goes to `FB.init({appId})`. It is the same Meta app whose secret PlanVortex uses to exchange the code afterwards. */
             app_id?: string;
+            /** @description `telegram_bot` only. The bot's `@name`, **without the at sign**. Published here so you never have to write it by hand: it is the name the person will see in Telegram, and it changes with the deployment. */
+            bot_username?: string;
             /** @description `meta_embedded_signup` only. Goes to `FB.login(cb, {config_id})` — the Embedded Signup configuration. */
             config_id?: string;
             /** @description `meta_embedded_signup` only. Goes to `extras.featureType`. */
@@ -2498,16 +2524,20 @@ export interface components {
             /** @description `meta_embedded_signup` only. Goes to `extras.sessionInfoVersion`. */
             session_info_version?: string;
             /**
-             * @description `redirect`: send the user to `link`. `meta_embedded_signup`: open the Meta popup with the fields below.
+             * @description `redirect`: send the user to `link`. `meta_embedded_signup`: open the Meta popup with the fields below. `telegram_bot`: open `link` in another tab and wait for the account to show up.
              * @enum {string}
              */
-            type: "redirect" | "meta_embedded_signup";
+            type: "redirect" | "meta_embedded_signup" | "telegram_bot";
         };
         AccountsSocialLinksList: {
             /** @description One entry per network that can be connected right now. */
             links: {
                 authorization: components["schemas"]["AccountsSocialAuthorizationMethod"];
-                /** @description The network's authorization URL. Send the user there. **Empty when `authorization.type` is not `redirect`** — WhatsApp has no URL to give. */
+                /**
+                 * @description The network's authorization URL. Send the user there. **Empty when `authorization.type` is `meta_embedded_signup`** — WhatsApp has no URL to give at all.
+                 *
+                 *     On `telegram_bot` it is filled in, and it still is not somewhere to redirect: it opens a Telegram chat, not an authorization screen. Open it in another tab.
+                 */
                 link: string;
                 social_network: components["schemas"]["SocialNetwork"];
             }[];
@@ -2767,7 +2797,11 @@ export interface components {
             values: number[];
         };
         CatalogSocialLimits: {
-            /** @description Maximum length of a publication's text. Bluesky counts graphemes, everyone else counts characters. */
+            /**
+             * @description Maximum length of a publication's text. Bluesky counts graphemes, everyone else counts characters — Telegram included, where `String.length` is exactly the right unit.
+             *
+             *     On Telegram there are **two numbers for the same field**: `telegram` (4.096) while the publication is text only, and `telegram_media` (1.024) the moment it carries an image or a video, because then the text is a media caption and not a message. Switch the counter when the file is attached, not when publish is pressed.
+             */
             characters: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Maximum length of a reply to a comment. `0` means the network has no comments. */
             comment_characters: components["schemas"]["CatalogSocialLimitsMap"];
@@ -2782,7 +2816,11 @@ export interface components {
             /** @description Maximum video duration. A network that limits weight instead of duration is not here but in `max_file_size_mb`. */
             video_duration_in_seconds: components["schemas"]["CatalogSocialLimitsMap"];
         };
-        /** @description One number per network. Every network in `/social_networks` is present. */
+        /**
+         * @description One number per network. Every network in `/social_networks` is present.
+         *
+         *     **And a few keys are not a network.** Some limits depend on the *kind* of publication rather than on the network alone, and those get a compound key next to the plain one: `instagram_story`, `facebook_reel`, `telegram_media`. Read the plain key by default and the compound one when it applies.
+         */
         CatalogSocialLimitsMap: {
             [key: string]: number;
         };
@@ -2936,7 +2974,10 @@ export interface components {
             /**
              * @description The comment's id on the network. Unique per account, and what makes repeated webhook deliveries idempotent.
              *
-             *     One exception worth knowing: a Google Business reply has no id of its own — it is a *field* of the review — so PlanVortex fabricates a stable one, `{reviewId}/reply`.
+             *     Two exceptions worth knowing, and both are composite ids you should treat as opaque:
+             *
+             *     • A Google Business reply has no id of its own — it is a *field* of the review — so PlanVortex fabricates a stable one, `{reviewId}/reply`.
+             *     • A Telegram comment lives in a **different chat** from the post it answers (the channel's linked discussion group), so it needs two ids at once and travels as `{thread}/{message}`: replying wants the first, deleting wants the second.
              */
             external_id: string;
             /** @description Hidden on the network. A hidden comment is never swept as deleted: on YouTube, hiding one makes the API stop returning it forever, and without that exception hiding would be indistinguishable from deleting. */
@@ -2960,7 +3001,7 @@ export interface components {
             our_reply_external_id?: string;
             /** @description Present only when this is a reply to another comment */
             parent_external_id?: string;
-            /** @description What the comment hangs off, on the network: the post/video id in five networks, and the **listing** (`locations/{id}`) for a Google Business review. */
+            /** @description What the comment hangs off, on the network: the post/video id in most networks, the **listing** (`locations/{id}`) for a Google Business review, and the published message's id on Telegram — where the thread that holds the comments *is* the forwarded post. */
             publication_external_id: string;
             /**
              * @description Star rating of a **review**. Present only on review networks — today Google Business. Its absence means "this network has no such thing", never zero.
@@ -3001,7 +3042,7 @@ export interface components {
          * @description A network that has comments. Treat it as an open list: a new one is added before your integration hears about it.
          * @enum {string}
          */
-        CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "google_business" | "bluesky" | "discord";
+        CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram";
         /** @description A live read: asked of the network and reconciled with what was stored. */
         CommentsCommentThread: {
             comments: components["schemas"]["CommentsComment"][];
@@ -3047,7 +3088,7 @@ export interface components {
             /**
              * @description What kind of change this is. **Treat it as an open list** and ignore what you do not handle: it grows with the product.
              *
-             *     - `new_account` / `change_state_account`: an account was connected, or its state changed — it stopped working, its token was refreshed, it was disconnected.
+             *     - `new_account` / `change_state_account`: an account was connected, or its state changed — it stopped working, its token was refreshed, it was disconnected. On `telegram` this is the **only** way to hear about a connection: there is no callback there, so no request of yours ever returns that account.
              *     - `messages`: a message came in. It travels in `messageObj`.
              *     - `messaging_postbacks`: the contact pressed a button or a quick reply. Also in `messageObj`.
              *     - `messaging_seen`: the contact read the conversation. `messageObj` carries the message they read, when we still have it.
@@ -3821,8 +3862,16 @@ export interface components {
              * @enum {string}
              */
             engagement_base?: "reach" | "impressions" | "followers";
-            /** @description The network's own identifier, once published. */
+            /** @description The network's own identifier, once published. On `telegram` an album is one publication that is **several messages**, and this holds the first one; the rest travel in `extra_data.telegram_message_ids`. */
             external_identifier?: string;
+            /**
+             * @description What one network needs to remember about **this** publication and that has no common field. Absent on a publication whose network needs nothing, which is almost all of them.
+             *
+             *     Today only `telegram` writes here, and only `telegram_message_ids`: the ids of every message an album turned into, because deleting the album means deleting all of them.
+             */
+            extra_data?: {
+                [key: string]: unknown;
+            };
             /** @description The attached files, **already resolved**: every read and write path returns full uploads, not identifiers. Identifiers are what you SEND (see `PublicationInput.files`). */
             files: components["schemas"]["Upload"][];
             /**
@@ -3871,7 +3920,7 @@ export interface components {
             text?: string;
             /** @description Only the networks that have a title field use it. */
             title?: string;
-            /** @description Link to the publication on the network, when there is one. */
+            /** @description Link to the publication on the network, when there is one. A **private** Telegram channel has no public URL, so it comes back empty even though the post went out. */
             url?: string;
         };
         /** @description Body accepted when creating or updating a publication. Only these properties are read; anything else in the payload is ignored. */
@@ -3896,13 +3945,17 @@ export interface components {
              *     Not every connectable network publishes — a local business listing receives reviews, not posts — so this list is shorter than the one in `GET /social_networks`. Ask `GET /allowed_social_publications` rather than hardcoding it, because it grows.
              * @enum {string}
              */
-            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord";
+            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram";
             /**
              * @description Send `draft` to store the publication without publishing it. If omitted, the state is resolved automatically: `ready` when everything validates, `withErrors` otherwise. Forcing `sended` marks it as published without actually sending it.
              * @enum {string}
              */
             state?: "ready" | "withErrors" | "sended" | "draft" | "publishing";
-            /** @description Body text of the publication. Either `text` or at least one entry in `files` is required: if both are empty the publication is still created, but in state `withErrors` with `publication_errors[].code = 915`. Maximum length depends on the network. On YouTube this is the video **description** (5,000 characters), and the publication must carry exactly one video file and no images — otherwise it is created in state `withErrors` with `publication_errors[].code = 943`. For X (Twitter), a text containing a link costs 200 credits instead of 15. */
+            /**
+             * @description Body text of the publication. Either `text` or at least one entry in `files` is required: if both are empty the publication is still created, but in state `withErrors` with `publication_errors[].code = 915`. Maximum length depends on the network. On YouTube this is the video **description** (5,000 characters), and the publication must carry exactly one video file and no images — otherwise it is created in state `withErrors` with `publication_errors[].code = 943`. For X (Twitter), a text containing a link costs 200 credits instead of 15.
+             *
+             *     **On Telegram the limit depends on what else the publication carries**: 4.096 characters while it is text only, and **1.024** the moment it has an image or a video, because then the text is the caption of a photo, a video or an album and no longer a message. Over the limit it is created in state `withErrors` with `publication_errors[].code = 967`, whose `data` carries `characters`, `max_characters` and `has_media`. Both numbers are published, as `characters.telegram` and `characters.telegram_media` in `GET /social_limits`.
+             */
             text?: string;
             /** @description Title for the publication. Only some networks use it: optional on LinkedIn, and **required on YouTube**, where it is the video title and must be 100 characters or fewer — a publication without it, or with a longer one, is created in state `withErrors` with `publication_errors[].code = 944`. */
             title?: string;
@@ -4003,6 +4056,8 @@ export interface components {
          *     On `discord` there are only two: `likes` (the reactions on the message) and `comments` (the messages in its thread). There is no impressions figure anywhere in Discord's API, so engagement is computed over the server's member count.
          *
          *     On `bluesky` there are no impressions and no reach either — only the public counters — so engagement is computed over followers.
+         *
+         *     On `telegram` there are two as well, and **neither of them is asked for**: the Bot API has no method that returns a message's metrics, so `reactions` arrives on its own through the bot and `comments` is counted in PlanVortex's own inbox. There are no impressions, no reach, no views and no forwards to be had anywhere in it, so engagement is computed over followers.
          */
         PublicationStats: {
             angers?: number;
@@ -4033,6 +4088,12 @@ export interface components {
             profile_visits?: number;
             quotes?: number;
             reach?: number;
+            /** @description Telegram. Every reaction on the post, all emoji together. It is the **complete state and not an increment**: it goes down when somebody takes theirs back. Normalised as `likes`. */
+            reactions?: number;
+            /** @description Telegram. The same total broken down by emoji. Reactions with a custom emoji are grouped under a single key: their identifier means nothing outside the server that created it. */
+            reactions_by_emoji?: {
+                [key: string]: number;
+            };
             replys?: number;
             retwets?: number;
             saved?: number;
@@ -4081,7 +4142,7 @@ export interface components {
          *     **This list grows.** Treat it as an open enumeration: a client that rejects an unknown value breaks the day a network is added, which happens several times a year. Not every network does everything — ask `GET /social_capabilities`.
          * @enum {string}
          */
-        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord";
+        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram";
         /** @description Statistics collection settings. Only `auto_refresh_twitter` is read; any other key is ignored. */
         StatsSettings: {
             /**
@@ -4165,6 +4226,9 @@ export interface components {
          *     | `948` | The reply is empty or longer than the network allows. Carries the limit in `data.max`; the same number is published in `comment_characters` of `GET /social_limits`. |
          *     | `951` | The Google Business listing is not verified, so it cannot reply to its reviews. It is the state of the customer's profile, not of your token. |
          *     | `952` | PlanVortex's Google Cloud project has no approved access to the Google Business API yet. Until it does, reviews cannot be read or replied to. |
+         *     | `965` | This Telegram channel has no linked discussion group, so it has no comments. The network gate says `true`; what is missing is a setting of **that channel**, which its owner fixes in two taps. Carries `chat_id` in `data`. |
+         *     | `969` | The PlanVortex bot is not allowed to delete messages in this Telegram discussion group. The network allows it; this installation does not. Carries `chat_id` in `data`. |
+         *     | `970` | Telegram is rate limiting the bot and the wait was longer than PlanVortex is willing to hold the request for. Carries `retry_after_seconds` in `data`: retry after it. |
          *     | `1101` | Invalid organization. |
          *     | `1501` | The comment's account could not be resolved. |
          */
@@ -6287,6 +6351,7 @@ export interface operations {
              *     | `519` | This endpoint does not accept app credentials |
              *     | `543` | This temporal connect token has already connected an account. Issue a new one |
              *     | `544` | This temporal connect token was issued for a different social network |
+             *     | `700` | The connection cannot be completed through this endpoint. It is what `telegram` always answers here: that network's accounts are created from the bot being added to a channel, never from a call of yours |
              *     | `1101` | Invalid organization, or a temporal token for a different one |
              */
             400: {
@@ -8873,6 +8938,8 @@ export interface operations {
              *     | `917` | Publication doesn't exists |
              *     | `935` | Invalid publication |
              *     | `940` | X (Twitter) credits exhausted. Deleting the tweet on X could not be charged. Response data: { used, limit }. |
+             *     | `966` | The Telegram message is older than 48 hours and the Bot API will not delete it any more. Response data: { published_date, max_hours }. |
+             *     | `969` | The PlanVortex bot is not allowed to delete messages in that Telegram chat. Response data: { chat_id }. |
              *     | `523` | Invalid application |
              */
             400: {
@@ -10437,7 +10504,8 @@ export interface operations {
                      *       "youtube",
                      *       "google_business",
                      *       "bluesky",
-                     *       "discord"
+                     *       "discord",
+                     *       "telegram"
                      *     ]
                      */
                     "application/json": components["schemas"]["SocialNetwork"][];

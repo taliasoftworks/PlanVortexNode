@@ -78,7 +78,12 @@ export class CatalogResource extends Resource {
      * Va **aparte** de {@link socialCapabilities} porque aquélla es `{[capacidad]: boolean}` y esto
      * es un objeto por red: meterlo dentro rompería su forma. Que la red tenga comentarios no dice
      * lo suficiente — Instagram, X y Bluesky no dejan borrar el de otro, LinkedIn no tiene
-     * "ocultar", y Google Business sólo deja borrar **nuestra propia respuesta**.
+     * "ocultar" (ni Discord ni Telegram tampoco), y Google Business sólo deja borrar **nuestra
+     * propia respuesta**.
+     *
+     * Y esto es de la RED, no de una cuenta suya: en Telegram borrar sale `true` y aun así falla con
+     * un 969 si el bot no es administrador del grupo de debate. La matriz dice qué botones pintar,
+     * no que cada uno vaya a funcionar en cada cuenta.
      */
     async socialCommentActions(options?: RequestOptions): Promise<Record<string, CommentActions>> {
         return this.cached("/social_comment_actions", () =>
@@ -93,6 +98,11 @@ export class CatalogResource extends Resource {
      * `characters` y 3.000 bytes en `max_post_bytes`. `.length` miente en las dos direcciones —un
      * emoji de familia es UN grafema y 25 bytes—, así que un contador que use `.length` da por
      * bueno lo que la API rechaza y al revés.
+     *
+     * Telegram lleva **dos números para el mismo campo**, y ahí `.length` es justo la unidad buena:
+     * `characters.telegram` (4.096) mientras la publicación es sólo texto y
+     * `characters.telegram_media` (1.024) en cuanto lleva imagen o vídeo, porque entonces el texto
+     * es el pie de un medio. El contador cambia al ADJUNTAR el fichero, no al pulsar publicar.
      */
     async socialLimits(options?: RequestOptions): Promise<SocialLimits> {
         return this.cached("/social_limits", () =>

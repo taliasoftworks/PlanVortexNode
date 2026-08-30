@@ -90,11 +90,19 @@ export class AccountsResource extends Resource {
      * no un fallo: es lo que pasa con Discord en una organización que todavía no ha guardado sus
      * propias credenciales de bot.
      *
-     * **MIRA `authorization`, NO si `link` está vacío.** Nueve de las diez redes son `redirect` y se
-     * manda a la persona a `link`. **WhatsApp no es una URL**: su alta es el Embedded Signup de
-     * Meta, un popup que levantas tú con el SDK de JavaScript de Facebook, así que su `link` es
-     * cadena vacía y lo que necesitas para abrirlo viaja en `authorization` — ver {@link ConnectLink}.
-     * Recorrer la lista redirigiendo a `link` manda a tu usuario a tu propia página.
+     * **MIRA `authorization`, NO si `link` está vacío.** Nueve de las once redes son `redirect` y se
+     * manda a la persona a `link`. Las otras dos no, y ninguna de las dos falla de forma visible si
+     * se recorre la lista redirigiendo a `link`:
+     *
+     *  - **WhatsApp no es una URL**: su alta es el Embedded Signup de Meta, un popup que levantas tú
+     *    con el SDK de JavaScript de Facebook, así que su `link` es cadena vacía y lo que necesitas
+     *    para abrirlo viaja en `authorization`. Redirigir a él manda a tu usuario a tu propia página.
+     *  - **Telegram sí tiene enlace y aun así no es una redirección**: abre un chat con el bot de
+     *    PlanVortex y de ahí no vuelve nadie. La cuenta nace después, cuando la persona mete el bot
+     *    en su canal, y se anuncia por el WebSocket y por el webhook `new_account` — nunca como
+     *    respuesta a una llamada tuya. Ábrelo en otra pestaña y sigue escuchando.
+     *
+     * Ver {@link ConnectLink} y {@link SocialAuthorizationMethod}.
      *
      * OJO: la red devuelve al usuario a un front de PlanVortex, no a una URL tuya — ver
      * `redirect_uri` en {@link ConnectLinksOptions}.

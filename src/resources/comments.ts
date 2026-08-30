@@ -15,7 +15,12 @@
  *    `next_cursor` OPACO que devolvió la llamada anterior, que se manda de vuelta como `offset`.
  *  - **No todas las redes dejan hacer lo mismo.** Antes de pintar un botón, {@link
  *    CommentsResource.actions}: Instagram, X y Bluesky no dejan borrar el comentario de otro,
- *    LinkedIn no tiene "ocultar" y Google Business sólo deja borrar **nuestra propia** respuesta.
+ *    LinkedIn no tiene "ocultar" —ni Discord ni Telegram tampoco— y Google Business sólo deja
+ *    borrar **nuestra propia** respuesta.
+ *  - **En Telegram la bandeja empieza el día que se conectó el canal.** La Bot API no sabe leer el
+ *    pasado: un bot sólo se entera de lo que pasa mientras está dentro, así que nada anterior a la
+ *    conexión existe aquí y nunca existirá. Dilo en tu interfaz — una bandeja que abre vacía en un
+ *    canal con movimiento se lee como un fallo tuyo.
  *  - **Todo esto exige plan de pago.** Con un plan gratuito la API devuelve el error 516.
  *  - **Borrar borra en la red**, no sólo en la bandeja. La fila se conserva marcada para que la
  *    siguiente lectura no la vuelva a dar de alta.
@@ -101,6 +106,9 @@ export class CommentsResource extends Resource {
      * **Lo que escribimos nosotros no sale aquí**: nuestras respuestas se guardan (el hilo las
      * necesita) pero no son correo entrante.
      *
+     * **En Telegram esto es TODO lo que hay**, y empieza el día que se conectó el canal: no existe
+     * lectura en vivo con la que completarlo, ni forma de importar lo anterior.
+     *
      * Aquí, y sólo aquí, `id_account` e `id_publication` vienen POBLADOS.
      *
      * ```ts
@@ -150,6 +158,12 @@ export class CommentsResource extends Resource {
      *
      * **En X cuesta un crédito por comentario devuelto** (`credits_consumed` lo dice después).
      * Una publicación que nunca llegó a enviarse devuelve el error 936: no hay hilo que leer.
+     *
+     * **En Telegram NO es en vivo**, y es la única excepción a todo lo anterior: la Bot API no tiene
+     * ningún método que liste las respuestas a un post, así que lo que vuelve es la bandeja de
+     * PlanVortex — lo que el bot ha visto desde que se conectó el canal. No se reconcilia nada y no
+     * se marca nada como borrado, porque no hay contra qué comparar. Y un canal sin grupo de debate
+     * no tiene comentarios en absoluto: error 965.
      */
     async thread(
         idOrganization: string,
@@ -257,6 +271,11 @@ export class CommentsResource extends Resource {
      * Sólo donde la red deja: `delete_own` y `delete_others` de {@link actions} son dos permisos
      * distintos, y en Google Business lo único borrable es nuestra propia respuesta a una reseña.
      * La fila se conserva marcada como borrada para que la siguiente lectura no la resucite.
+     *
+     * En Telegram la red deja borrar los dos, y aun así depende de un permiso que controla el
+     * cliente: el bot tiene que ser administrador del grupo de debate con derecho a borrar. Cuando
+     * no lo es, la respuesta es un 969 — que es la diferencia entre "esta red no puede" y "este
+     * canal no puede".
      */
     async remove(idOrganization: string, idComment: string, options: RequestOptions = {}): Promise<void> {
         await this.httpDelete<SuccessResponse>(this.path(idOrganization, idComment), undefined, options);

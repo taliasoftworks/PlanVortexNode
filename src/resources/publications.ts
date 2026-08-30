@@ -188,6 +188,12 @@ export class PublicationsResource extends Resource {
      *
      * En X borrar cuesta créditos: sin ellos devuelve un 940 en vez de un error genérico.
      *
+     * **En Telegram hay una ventana de 48 horas.** Pasada, la Bot API se niega a borrar el mensaje
+     * sea cual sea el papel del bot, y la respuesta es un 966 con `published_date` y `max_hours` en
+     * `data` — así que lo sensato es apagar el botón en vez de ofrecerlo y fallar. El 969 es el otro
+     * caso: al bot ya no le dejan borrar ahí. Y un álbum son varios mensajes: se borran todos, o el
+     * post quedaría medio publicado en el canal.
+     *
      * Después deja de leerse por id: {@link get} contesta 917, y por tanto un segundo
      * `remove()` también.
      */

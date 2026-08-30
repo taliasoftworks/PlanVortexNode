@@ -23,11 +23,13 @@ import { account, accountId } from "../src/index.js";
 import type {
     Account,
     Comment,
+    CommentNetwork,
     OpenApiComponents,
     Paginated,
     Publication,
     PublicationInput,
     PublicationState,
+    SocialAuthorizationMethod,
     SocialNetwork,
     Upload,
 } from "../src/index.js";
@@ -250,5 +252,63 @@ describe("los tipos publicos", () => {
         expect(accountId(leida)).toBe(cuenta._id);
         expect(account(listada)).toBeUndefined();
         expect(account(leida)).toEqual(cuenta);
+    });
+});
+
+/**
+ * Telegram, que es la red que este paquete puede quedarse sin conocer SIN ROMPERSE.
+ *
+ * Es la trampa de la fase 10 del roadmap: los tipos salen de una copia commiteada del OpenAPI, y
+ * `SocialNetwork` es una enumeracion ABIERTA, asi que `"telegram"` compila igual con el spec viejo
+ * — sin error, sin aviso, sin autocompletado—. Lo unico que se estrecha de verdad son las uniones
+ * CERRADAS que cuelgan del spec, y son las que se fijan aqui: si alguien toca el spec y no corre
+ * `npm run generate`, esto se pone rojo. `openapi_freshness.test.ts` mira lo mismo un piso mas
+ * arriba, pero se salta entero cuando PlanVortexHome no esta al lado.
+ */
+describe("la undecima red vive en las uniones cerradas, no en las abiertas", () => {
+    it("autocompleta `telegram` donde la enumeracion es abierta", () => {
+        expectTypeOf<SocialNetwork>().extract<"telegram">().toEqualTypeOf<"telegram">();
+        expectTypeOf<CommentNetwork>().extract<"telegram">().toEqualTypeOf<"telegram">();
+    });
+
+    /**
+     * `authorization.type` es la union cerrada que de verdad importa, y encima es CONTRATO NUEVO:
+     * Telegram no se autoriza con una redireccion. Quien ramifique con un `if/else` de dos ramas
+     * manda a su usuario a un chat del que no vuelve nadie, asi que el tercer valor tiene que
+     * existir en el tipo para que su `switch` deje de ser exhaustivo y el compilador se lo diga.
+     */
+    it("declara el tercer tipo de autorizacion, con los dos campos del bot", () => {
+        const telegram: SocialAuthorizationMethod = {
+            type: "telegram_bot",
+            bot_username: "PlanVortexBot",
+            add_to_group_link: "https://t.me/PlanVortexBot?startgroup=true&admin=delete_messages",
+        };
+
+        expect(telegram.type).toBe("telegram_bot");
+        expectTypeOf<SocialAuthorizationMethod["type"]>().toEqualTypeOf<
+            "redirect" | "meta_embedded_signup" | "telegram_bot"
+        >();
+    });
+
+    /** La red publica, asi que el `social_network` del cuerpo de publicar tiene que aceptarla. */
+    it("la admite en el cuerpo cerrado de publicar del spec", () => {
+        expectTypeOf<OpenApiComponents["schemas"]["PublicationsPublicationInput"]["social_network"]>()
+            .extract<"telegram">()
+            .toEqualTypeOf<"telegram">();
+    });
+
+    /** Y en el catalogo de redes con comentarios, que es la otra union cerrada del spec. */
+    it("la admite en la lista cerrada de redes con comentarios del spec", () => {
+        expectTypeOf<OpenApiComponents["schemas"]["CommentsCommentNetworkName"]>()
+            .extract<"telegram">()
+            .toEqualTypeOf<"telegram">();
+    });
+
+    /**
+     * Y NO esta en los canales de contacto, que es lo contrario de un olvido: esta red no tiene
+     * mensajes directos, y meterla ahi prometeria una bandeja de chat que no existe.
+     */
+    it("no esta entre los canales de un contacto: Telegram no tiene mensajes directos", () => {
+        expectTypeOf<OpenApiComponents["schemas"]["ContactChannel"]>().extract<"telegram">().toBeNever();
     });
 });

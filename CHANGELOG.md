@@ -4,6 +4,63 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-30
+
+Telegram, the eleventh network, reaches the package. Nothing here is a new method: what changes is
+what the types know, and on this network that turns out to be contract rather than one more name in
+a list.
+
+**`"telegram"` already compiled before this release, and that is the trap.** `SocialNetwork` is an
+open enumeration, so a network the package has not been regenerated for type-checks fine and just
+loses its autocompletion. What actually went missing were the CLOSED unions hanging off the
+specification — the comment networks, a publication's `social_network`, and `authorization.type` —
+and the last of those is not cosmetic: an integration that branches on two authorization types sends
+its user into a chat nobody comes back from.
+
+Nothing was removed and no signature moved: upgrading from `0.3.0` needs no changes, and
+`MIGRATION.md` gains no entry.
+
+### Added
+
+- **A third `authorization.type`: `telegram_bot`.** Telegram is the one entry that carries a `link`
+  and still is not somewhere to redirect. That link opens a private chat with the PlanVortex bot;
+  there is no OAuth behind it, no `code` and no `redirect_uri`, and the account is born minutes
+  later when the person drops that bot into their channel — announced over the WebSocket and the
+  `new_account` webhook, never as the answer to a call of yours. The block carries `bot_username`
+  (the bot's `@name`, without the at sign) and `add_to_group_link`, the second step, which turns
+  comments on by adding the bot to the channel's linked discussion group. **Branch on
+  `authorization.type`, never on whether `link` is empty**: that test was already wrong for WhatsApp
+  and it is worse here, because a filled-in `link` makes it look like it worked.
+- **`telegram` in the closed unions**: `CommentNetwork`, the specification's
+  `PublicationsPublicationInput.social_network` and `CommentsCommentNetworkName`. It is deliberately
+  **not** in `ContactChannel`: Telegram has no direct messages, and putting it there would promise a
+  chat inbox that does not exist.
+- **`PublicationStats.reactions` and `reactions_by_emoji`**, which are Telegram's only publication
+  metric — and neither of them is asked for. `reactions` is the COMPLETE STATE and not an increment,
+  so it goes down when somebody takes theirs back.
+- **`Publication.extra_data`**, for what one network has to remember about one publication and that
+  has no common field. Today only `telegram_message_ids` writes there: on Telegram an album is one
+  publication that is several messages, `external_identifier` holds the first and the rest live
+  here, because deleting the album means deleting all of them.
+
+### Changed
+
+- The documentation of the network-counting prose, which had quietly stopped being true:
+  `accounts.connectLinks`, `SocialAuthorizationMethod`, `ConnectLink` and the comment-action matrix
+  all said "nine of the ten". No test watches a sentence, which is why they went stale.
+- Two warnings about this network are now on the methods that would otherwise surprise you, because
+  neither has an error code to announce it. **The comment inbox starts the day the channel was
+  connected** — the Bot API cannot read the past, so `comments.list` and `comments.thread` have
+  nothing earlier and never will, and on Telegram the "live" thread is not live at all. And **there
+  are no impressions and no reach**: `engagement_base` is `followers`, the only audience figure the
+  Bot API publishes being the channel's member count.
+- `catalog.socialLimits` explains Telegram's **two numbers for the same field** — 4.096 characters
+  while the publication is text only and 1.024 the moment it carries an image or a video, because
+  then the text is a media caption. The counter switches when the file is attached, not when publish
+  is pressed. `SocialLimitsMap` now says out loud that some of its keys are not a network.
+- `publications.remove` documents Telegram's **48-hour window** (error 966, with `published_date`
+  and `max_hours` in `data`), which is a button to grey out rather than to offer and fail.
+
 ## [0.3.0] - 2026-08-28
 
 Three things the API can do and this package said it could not. All three were server bugs that
