@@ -22,10 +22,18 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { account, accountId } from "../src/index.js";
 import type {
     Account,
+    AiPlan,
+    AiPlanCreateRequest,
+    AiPlanNotice,
+    AiPlanSourceInput,
     Comment,
     CommentNetwork,
     OpenApiComponents,
     Paginated,
+    PlannerTemplate,
+    PlannerTemplateField,
+    PlannerTemplateFieldType,
+    PlannerTemplateName,
     Publication,
     PublicationInput,
     PublicationState,
@@ -89,11 +97,12 @@ describe("el paquete OpenAPI commiteado", () => {
     });
 
     /**
-     * 132 operaciones y el webhook de comentarios. No es una cifra de cobertura: es el alcance
+     * 133 operaciones y el webhook de comentarios. No es una cifra de cobertura: es el alcance
      * publico que se pacto en la fase 2, y si cambia es que alguien ha movido superficie publica.
+     * La 133 es `GET /planner_templates`, que entro con las plantillas del planificador.
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(132);
+        expect(operations(bundle.paths)).toHaveLength(133);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 
@@ -310,5 +319,83 @@ describe("la undecima red vive en las uniones cerradas, no en las abiertas", () 
      */
     it("no esta entre los canales de un contacto: Telegram no tiene mensajes directos", () => {
         expectTypeOf<OpenApiComponents["schemas"]["ContactChannel"]>().extract<"telegram">().toBeNever();
+    });
+});
+
+/**
+ * Las plantillas del planificador, que son la otra clase de tipo que este paquete puede quedarse
+ * sin conocer sin romperse — y la clase que MAS caro sale copiar, porque lleva precios dentro.
+ *
+ * `PlannerTemplateName` se declara ABIERTA a proposito, por lo mismo que `SocialNetwork`: la lista
+ * crece (la siguiente ya esta nombrada en el roadmap, la fuente desde una integracion) y una
+ * plantilla nueva en el servidor no puede dejar de compilar el codigo de nadie. Lo que si tiene que
+ * seguir siendo exacto es lo que cuelga del spec, y es lo que se fija aqui.
+ */
+describe("las plantillas del planificador", () => {
+    it("autocompletan las cinco y admiten una que este paquete todavia no conoce", () => {
+        const conocida: PlannerTemplateName = "from_catalog";
+        const nueva: PlannerTemplateName = "from_rss_todavia_no_existe";
+
+        expect([conocida, nueva]).toHaveLength(2);
+        expectTypeOf<PlannerTemplateName>().extract<"campaign">().toEqualTypeOf<"campaign">();
+    });
+
+    /**
+     * Al CREAR el plan la union si es cerrada, y tiene que serlo: mandar una plantilla que el
+     * servidor no conoce es un 2111, asi que aqui el compilador puede evitarselo a quien escribe.
+     */
+    it("cierran la union al crear un plan, que es donde el servidor contesta 2111", () => {
+        expectTypeOf<AiPlanCreateRequest["template"]>().toEqualTypeOf<
+            "standard" | "from_images" | "from_text" | "from_catalog" | "campaign" | undefined
+        >();
+    });
+
+    /**
+     * Las cinco fuentes viven en UN tipo con todo opcional, no en cinco. Es lo que dice el spec y es
+     * deliberado: una union discriminada obligaria a que el campo discriminante fuese `template`,
+     * que viaja FUERA de `source`, y TypeScript no puede estrechar un objeto por un hermano suyo.
+     */
+    it("admiten la forma de cada plantilla en un solo `source`", () => {
+        const imagenes: AiPlanSourceInput = {
+            images: [{ id_upload: "66d04a6a427f4c43b9d97f70", description: "La hogaza saliendo del horno" }],
+        };
+        const texto: AiPlanSourceInput = { url: "https://ejemplo.test/articulo" };
+        const catalogo: AiPlanSourceInput = {
+            id_account_catalog: cuenta._id,
+            product_catalog_id: "1234567890",
+            products: ["p1", "p2"],
+        };
+        //Un DIA DE CALENDARIO, nunca un instante ISO: `2026-09-15T00:00:00Z` es el 14 por la tarde
+        //en Nueva York, o sea un dia entero de desfase en una cuenta atras y sin error en ninguna
+        //parte.
+        const campana: AiPlanSourceInput = { event_name: "Apertura del local", event_date: "2026-09-15" };
+
+        expect([imagenes, texto, catalogo, campana]).toHaveLength(4);
+        expectTypeOf<NonNullable<AiPlanSourceInput["images"]>[number]>().toExtend<{
+            id_upload: string;
+            description: string;
+        }>();
+    });
+
+    /** El aviso 2117 es un `warnings` del plan, no un error de la respuesta: el plan se genero bien. */
+    it("dejan el 2117 dentro del plan y no en el error", () => {
+        expectTypeOf<AiPlan["warnings"]>().toExtend<AiPlanNotice[] | undefined>();
+        expectTypeOf<AiPlanNotice>().toExtend<{ code: number; message: string }>();
+    });
+
+    /** Y la ficha del catalogo, que es de donde salen los costes y los campos del paso de fuente. */
+    it("publican su ficha con los costes y los campos", () => {
+        expectTypeOf<PlannerTemplate>().not.toBeAny();
+        expectTypeOf<PlannerTemplate>().toHaveProperty("orchestration_cost");
+        expectTypeOf<PlannerTemplate>().toHaveProperty("orchestration_cost_per_source_item");
+        expectTypeOf<PlannerTemplate>().toHaveProperty("generates_images");
+        expectTypeOf<PlannerTemplate>().toHaveProperty("max_source_items");
+        expectTypeOf<PlannerTemplate>().toHaveProperty("source_requires_any");
+        //`max` y `min` van en las unidades del campo: caracteres, elementos, o DIAS en una fecha.
+        expectTypeOf<PlannerTemplateField>().toHaveProperty("max");
+        expectTypeOf<PlannerTemplateField>().toHaveProperty("min");
+        expectTypeOf<PlannerTemplateFieldType>().extract<"uploads_with_description">().toEqualTypeOf<
+            "uploads_with_description"
+        >();
     });
 });

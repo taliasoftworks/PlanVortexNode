@@ -349,7 +349,7 @@ export interface paths {
         put?: never;
         /**
          * Create an AI publication plan
-         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (artificial_inteligence), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission.
+         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (artificial_inteligence), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117).
          */
         post: operations["addAiPlan"];
         delete?: never;
@@ -398,6 +398,8 @@ export interface paths {
          *     **It costs credits, and they are charged per use.** The balance is checked before the call and the real cost is charged afterwards, accumulating in the plan's `credits_spent`. As a reference: regenerating a text is billed around 2 credits and an image around 70, but what is actually charged is the provider's real cost.
          *
          *     It only works **while the plan is under review** (state `generated`) and on its drafts: a publication already validated or published is not a draft any more.
+         *
+         *     **What can be regenerated depends on the plan template**, and it is published in `regenerate` (`GET /planner_templates`). `from_images` and `from_catalog` cannot regenerate the image: nobody regenerates the photo they took themselves, and offering the button anyway charges the user 70 credits to replace their own photo with an invented one. Asking for it anyway is a 2102.
          */
         post: operations["regenerateAiPlanPublication"];
         delete?: never;
@@ -2234,6 +2236,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/planner_templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * AI planner templates
+         * @description What an AI plan can be generated FROM, and what each source allows.
+         *
+         *     A template is the **source** of the content, not the wizard's flow: sharing, publish days, language, tone and images stay cross-cutting options, and every template declares which of them it accepts. Send the chosen one as `template` when creating a plan (`POST /ai_plans`), together with its `source`.
+         *
+         *     • **`generates_images: false` means the pictures come from the source** — your own photos, your catalogue — so the plan spends **no image credits at all**. A week of 7 publications with a picture on each goes from 519 credits to 48, and it is worth saying out loud before the plan is created.
+         *     • **`regenerate` is per template.** A template that did not generate the image cannot regenerate it: offer that button anyway and the user pays 70 credits to replace their own photo with an invented one.
+         *     • **`orchestration_cost` is an ESTIMATE, not the bill.** The real charge is per use (what the provider reports). `orchestration_cost_per_source_item` is what each unit of the source adds on top — one vision pass per image.
+         *     • **A plan is WEEKLY, and the source does not extend it.** With `max_source_items` photos but fewer slots left in the week, the extra ones are dropped and the plan carries warning 2117 in `ai_plan.warnings`. Say it in your UI *before* creating the plan, not after charging for it.
+         *     • **`source_fields` is what the source step is made of.** The simple types are ordinary controls; `uploads_with_description` and `catalog_products` are the signal that the step needs a component of its own.
+         *     • **The fields carry their own limits.** `max` and `min` are in the field's own units — characters of a text, items of a list, **days** for a date — and `source_requires_any` names the fields of which at least one is needed (`from_text`: the URL or the pasted text). Read them from here; hardcoding them is how a wizard ends up rejecting at a number the server does not use.
+         */
+        get: operations["getPlannerTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/publication_limits": {
         parameters: {
             query?: never;
@@ -2579,14 +2610,8 @@ export interface components {
             creation_date: string;
             /** @description AI credits actually consumed by the generation. */
             credits_spent: number;
-            /** @description Last generation error, in the same shape as an API error. Present only in state `failed`. */
-            error?: {
-                code: number;
-                data?: {
-                    [key: string]: unknown;
-                };
-                message: string;
-            };
+            /** @description Last generation error. Present only in state `failed`. */
+            error?: components["schemas"]["AiPlansAiPlanNotice"];
             /** Format: date-time */
             generation_end_date?: string;
             id_client: string;
@@ -2605,19 +2630,33 @@ export interface components {
              *     **It is not always the same shape.** Reading one plan (`GET`, `validate`, `retry`) returns whole publications with their files resolved; the LISTING returns their identifiers as strings. Check before using them.
              */
             publications: (string | components["schemas"]["Publication"])[];
+            /** @description The source snapshot. Absent on a `standard` plan, which has no source. */
+            source?: components["schemas"]["AiPlansAiPlanSource"];
             /**
              * @description State machine: pending -> generating -> generated -> validated | failed | cancelled. Poll the plan while state is pending or generating.
              * @enum {string}
              */
             state: "pending" | "generating" | "generated" | "validated" | "failed" | "cancelled";
+            /**
+             * @description What this plan was generated from. Always present: a plan created before templates existed reads `standard`.
+             * @enum {string}
+             */
+            template?: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
+            /**
+             * @description Non-blocking notices about the LAST attempt (they are cleared when a new one starts). The plan is generated and perfectly usable; your UI just has to say what happened.
+             *
+             *     Today there is one: **2117 — some source items did not fit in the plan week.** A plan is weekly and the source does not extend it, so 12 photos with 6 slots left publish 6 and the rest are dropped. `data` carries `{ source_items, capacity }`. Better said BEFORE creating the plan (the slots are the publish days x the accounts) than after charging for it.
+             */
+            warnings?: components["schemas"]["AiPlansAiPlanNotice"][];
         };
         /** @description Deterministic cost estimate computed by the backend (never by the model). BYOK scopes cost 0 credits. */
         AiPlansAiPlanCostEstimate: {
             available_credits: number;
-            /** @description Mandatory cost (orchestration + target texts). The plan is rejected if this exceeds the available credits. */
+            /** @description Mandatory cost (orchestration + target texts). The orchestration half depends on the TEMPLATE and on the size of its source: `orchestration_cost` + `orchestration_cost_per_source_item` x units, both published in `GET /planner_templates`. The plan is rejected if this exceeds the available credits. */
             base_cost: number;
             /** @description Total estimated cost including the financeable images (upper bound). */
             estimated_cost: number;
+            /** @description How many images the plan will generate. **0 when the template does not generate them** (`from_images`, `from_catalog`): the pictures come from the source, so the plan spends no image credits at all — a week of 7 publications with a picture on each goes from 519 credits to 48. That is worth saying out loud before the plan is created. */
             images_target: number;
             texts_target: number;
         };
@@ -2627,6 +2666,17 @@ export interface components {
             options?: components["schemas"]["AiPlansAiPlanOptionsInput"];
             /** @description Theme prompt written by the user. */
             prompt: string;
+            /** @description The source itself. Which fields it carries depends on `template`. Required for every template except `standard`, and validated at creation — 2112, 2113, 2114, 2115 or 2116 come back while the user is still there. */
+            source?: components["schemas"]["AiPlansAiPlanSourceInput"];
+            /**
+             * @description What the plan is generated FROM. Optional; defaults to `standard`, which is exactly what every plan did before templates existed — send nothing and nothing changes.
+             *
+             *     A template is the **source** of the content, not a different flow: `shared`, `publish_days`, `language`, `tone` and the images stay cross-cutting options, and each template declares which of them it accepts. Sending one it does not accept is a 2106, not a silent ignore.
+             *
+             *     Read the list, the costs and the fields from `GET /planner_templates`; do not hardcode them.
+             * @enum {string}
+             */
+            template?: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
         };
         AiPlansAiPlanCreateResponse: {
             ai_plan: components["schemas"]["AiPlansAiPlan"];
@@ -2637,6 +2687,14 @@ export interface components {
         AiPlansAiPlanList: {
             ai_plans: components["schemas"]["AiPlansAiPlan"][];
             total: number;
+        };
+        /** @description Something the plan has to say about itself, in the same shape as an API error. */
+        AiPlansAiPlanNotice: {
+            code: number;
+            data?: {
+                [key: string]: unknown;
+            };
+            message: string;
         };
         AiPlansAiPlanOne: {
             ai_plan: components["schemas"]["AiPlansAiPlan"];
@@ -2695,9 +2753,9 @@ export interface components {
         };
         /** @description Generation options, as you SEND them: every one is optional and the server fills in its default. Optimal publish slots are chosen deterministically by the backend from a fixed table per network, converted to this timezone; the model never invents times. */
         AiPlansAiPlanOptionsInput: {
-            /** @description Whether images may be generated. Each image costs 70 AI credits. Optional; defaults to `true`. */
+            /** @description Whether images may be generated. Each image costs 70 AI credits. Optional; defaults to `true`. Forced to `false` when the template does not generate images (`generates_images: false`), where the picture comes from the source and costs nothing. */
             allow_images?: boolean;
-            /** @description Upload ids from the organization's gallery used as visual reference for the generated images. */
+            /** @description Upload ids from the organization's gallery used as visual reference for the generated images. They are references for the images the model GENERATES, so a template that does not generate them does not accept them either (`allows_gallery`): sending them to `from_images` or `from_catalog` is a 2106. */
             gallery_uploads?: string[];
             /** @description Language of the generated texts. Optional; defaults to `"es"`. */
             language?: string;
@@ -2705,7 +2763,7 @@ export interface components {
             max_images?: number;
             /** @description Days of the week the plan publishes on, in ISO 8601 numbering (1 = Monday ... 7 = Sunday). Defaults to the whole week. There is still at most ONE publication per day and account, so this is what bounds the size and the cost of the plan: the number of generated posts is (selected days x accounts). Must be a non-empty array of unique integers between 1 and 7, or the request is rejected with 2106. The 7-day window starts at week_start, so each ISO day appears exactly once: with a week_start in mid-week, day 1 (Monday) is the FOLLOWING Monday. If the selected days leave no future slot at all, the request is rejected with 2108. Optional; defaults to `[1,2,3,4,5,6,7]`. */
             publish_days?: number[];
-            /** @description Generate ONE piece of content per day and replicate it across every account, each scheduled at the best hour for ITS network, instead of one publication per account and day. Cheaper — one text and one image per day — and it caps images at 7. Optional; defaults to `false`. */
+            /** @description Generate ONE piece of content per day and replicate it across every account, each scheduled at the best hour for ITS network, instead of one publication per account and day. Cheaper — one text and one image per day — and it caps images at 7. Optional; defaults to `false`. **Not every template accepts it** (`allows_shared` in `GET /planner_templates`): `from_images` and `from_catalog` do not, because each of their publications carries a photo of its own, and sending `true` to them is rejected with 2106. */
             shared?: boolean;
             /** @description IANA timezone for the optimal publish slots (typically the user's browser timezone). publish_date is stored in UTC. Optional; defaults to `"Europe/Madrid"`. */
             timezone?: string;
@@ -2718,6 +2776,83 @@ export interface components {
              * @description Start of the week to plan (slots are generated between this date and +7 days). Defaults to now.
              */
             week_start?: string;
+        };
+        /** @description The plan source as it was STORED: a snapshot taken when the plan was created, not a live reference. It is what makes a retry reproduce the same plan even if the article went offline or the product left the catalogue — same reason as `organization_context`. */
+        AiPlansAiPlanSource: {
+            /** @description `campaign`. The event and its date, already normalised to the start of ITS day in the plan timezone. */
+            event?: {
+                /** Format: date-time */
+                date?: string;
+                name?: string;
+            };
+            /** @description `from_catalog`. The account whose catalogue was read. */
+            id_account_catalog?: string;
+            /** @description `from_images`. The chosen photos with their descriptions, in the order they were sent — the position IS the `source_index` of the publication that uses it. */
+            images?: {
+                description?: string;
+                id_upload?: string;
+            }[];
+            /** @description `from_catalog`. Snapshot of the chosen products. */
+            products?: components["schemas"]["AiPlansAiPlanSourceProduct"][];
+            /** @description `from_text`. The article, already downloaded and truncated. It is never downloaded again. */
+            text?: string;
+            /** @description `from_text`. The original address, kept for the record and to show where the plan came from. */
+            url?: string;
+        };
+        /** @description One photo of `from_images`. */
+        AiPlansAiPlanSourceImageInput: {
+            /** @description What is in the photo. **Mandatory on purpose**: without it the model writes about what it believes it sees, and with a product photo it gets the product wrong about half the time. */
+            description: string;
+            /** @description An upload of the organization. It has to be an image: a video or an audio is rejected here, not later at publish time. */
+            id_upload: string;
+        };
+        /**
+         * @description The plan's source, as you SEND it. **One shape per template**: send only the fields of the template you chose — what it does not read is ignored, and what it needs and does not get is a 2112.
+         *
+         *     It is validated when the plan is **created**, not when it is generated: the article is downloaded, the catalogue is read live and the product pictures are copied. So a source that does not work fails while the user is still there and can fix it, and what gets stored is a SNAPSHOT — a retry three days later does not depend on the article still being online or the product still being in the catalogue.
+         *
+         *     | Template | Fields |
+         *     | --- | --- |
+         *     | `standard` | none — no source |
+         *     | `from_images` | `images` |
+         *     | `from_text` | `url` **or** `text` |
+         *     | `from_catalog` | `id_account_catalog`, `product_catalog_id`, `products` |
+         *     | `campaign` | `event_name`, `event_date` |
+         */
+        AiPlansAiPlanSourceInput: {
+            /**
+             * Format: date
+             * @description `campaign`. The day of the event. **Send a calendar day, `YYYY-MM-DD` — never an ISO instant.** A bare date is read in the plan's `options.timezone`, which is the whole point: `2026-09-15T00:00:00Z` is midnight UTC, that is the 14th in the afternoon in New York — a whole day off in a countdown, for half of America, with no error anywhere. It cannot fall before the plan week (`options.week_start`) nor more than 60 days after it (2112). And it does **not** move `publish_days`: if the event lands on a day you did not choose, the plan respects your choice and it is up to you to say so.
+             */
+            event_date?: string;
+            /** @description `campaign`. What the countdown is towards ("Rebajas de verano", "Apertura del local"). Over 120 characters it is **rejected, not truncated**: a name cut mid-word would come out that way in all seven publications, and whatever else needs saying goes in `prompt`. */
+            event_name?: string;
+            /** @description `from_catalog`. Which account's catalogue the products come from. It has to belong to the organization (2103) and be on a network that supports products (2115). It only chooses the catalogue: the publications still go to every account in `accounts` — a LinkedIn account can publish a product from a Facebook catalogue. */
+            id_account_catalog?: string;
+            /** @description `from_images`. Your own photos, each with its own description, **in the order that tells the story**: the orchestrator picks one per publication and keeps its position in `source_index`, so photo 3 can be the "before" and photo 7 the "after". Up to 20 (`max_source_items`), and each one has to be an image upload of this organization (806 otherwise). */
+            images?: components["schemas"]["AiPlansAiPlanSourceImageInput"][];
+            /** @description `from_catalog`. The catalogue itself, as the network identifies it. */
+            product_catalog_id?: string;
+            /** @description `from_catalog`. Ids of the chosen products, **in the order they should tell the week**. Up to 12 — a unit here is not an id already in the database: it is a live read plus a real download inside this request, with the user waiting. Repeated ids are deduplicated. They are ALL checked against the catalogue before a single picture is downloaded (2112 naming the missing one), and each picture is copied into an upload of the organization: the network CDN URL expires, and a plan published weeks later would carry a broken file. Those uploads count against the storage quota. */
+            products?: string[];
+            /** @description `from_text`. The article pasted by hand. **It wins over `url`** when both come: pasting is what a user does when the download did not work (a paywall, a page that needs JavaScript), so re-downloading to ignore what they wrote would take away their only way out. Truncated to 12.000 characters — the cap is what keeps the estimate honest, since the real charge is per use. Under 200 characters it is not an article, it is the theme, which is `prompt` and another field (2116). */
+            text?: string;
+            /**
+             * Format: uri
+             * @description `from_text`. The article the plan is written from. It is downloaded at creation, and only `http`/`https` addresses that resolve to a **public** IP are accepted — checked again before every redirect (2114). A page that answers something that is not text or HTML, or that carries no usable text once stripped, is a 2113: paste the text in `text` instead.
+             */
+            url?: string;
+        };
+        /** @description A product of the catalogue, copied when the plan was created. */
+        AiPlansAiPlanSourceProduct: {
+            description?: string;
+            /** @description The id it has in the network catalogue. */
+            external_id?: string;
+            /** @description The product picture, copied into an upload of the organization. The network CDN URL expires; this one does not. */
+            id_upload?: string;
+            name?: string;
+            /** @description The price **exactly as the network returned it** ("9,99 €"). It is never converted: the same field is a number in other paths of Meta's API and there is no way to tell units from cents, and dividing by 100 "just in case" is precisely how a 10 € product gets advertised at 0,10 €. The prompt is told to copy it verbatim or to say nothing. */
+            price?: string;
         };
         /**
          * @description An app: the credentials a third-party integration authenticates with.
@@ -2795,6 +2930,56 @@ export interface components {
             text: string[];
             /** @description The ratio as a number (width divided by height), which is what validation compares against. */
             values: number[];
+        };
+        CatalogPlannerTemplate: {
+            /** @description Does it accept `options.gallery_uploads` (visual references for the generated images)? */
+            allows_gallery?: boolean;
+            /** @description Does it accept `options.shared` (one content replicated across every account)? */
+            allows_shared?: boolean;
+            /** @description false = the pictures come from the source, and the plan spends no image credits. */
+            generates_images?: boolean;
+            /** @description Hard cap of source units accepted. 0 = this template has no unit-based source. */
+            max_source_items?: number;
+            /** @description Estimated credits for this template's orchestration pass. The real charge is per use. */
+            orchestration_cost?: number;
+            /** @description Extra estimated credits per unit of source (per image, in `from_images`). 0 when the source does not scale the prompt. */
+            orchestration_cost_per_source_item?: number;
+            /** @description What can be regenerated on a publication of this plan. */
+            regenerate?: {
+                image?: boolean;
+                text?: boolean;
+            };
+            source_fields?: components["schemas"]["CatalogPlannerTemplateField"][];
+            /**
+             * @description Fields of which AT LEAST ONE is needed, even though none of them is required on its own. Today it is `from_text`: either the URL or the pasted text, never both empty (2116).
+             *
+             *     It exists because a field's `required` cannot say "one or the other", and without it your UI would have to hardcode that rule — exactly the copy this catalogue exists to avoid. Absent = there is nothing of the sort to resolve.
+             */
+            source_requires_any?: string[];
+            /**
+             * @description What the plan is generated FROM, and what you send as `template` when creating it:
+             *
+             *     • **`standard`** — a theme prompt, images generated by the model. What every plan was before templates existed.
+             *     • **`from_images`** — the user's own photos, each with its own description. One vision pass over ALL of them at once, so the model can sequence a narrative (photo 3 the "before", photo 7 the "after") instead of writing seven independent posts. It generates no images.
+             *     • **`from_text`** — an article: a URL that is downloaded at creation, or the text pasted by hand.
+             *     • **`from_catalog`** — products read LIVE from a connected catalogue, with their name, their price and their picture. The one template that cannot be copied by a generic AI tool, because it needs the catalogue connection.
+             *     • **`campaign`** — a countdown towards a date, with a narrative arc: teaser, announcement, reminder, today, thank you. The only plan that is a story instead of seven loose posts.
+             * @enum {string}
+             */
+            template?: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
+        };
+        /** @description One field of the source step. `uploads_with_description` (photos, each with its own description) and `catalog_products` (products read live from a connected catalogue) need a dedicated component; the rest are ordinary controls. */
+        CatalogPlannerTemplateField: {
+            default?: unknown;
+            /** @description Cap in the field's **own units**: characters of a text, items of a list, and **days** of a `date` — the `event_date` of `campaign` carries 60, which is how far ahead of the plan week the countdown may point. */
+            max?: number;
+            /** @description Floor in the field's own units. Today only `from_text`: under 200 characters it is not an article, it is the theme, which is `prompt` and another field. Published for the same reason as `max` — without it your UI hardcodes the 200 and the user gets a 2116 AFTER pasting the text instead of while pasting it. */
+            min?: number;
+            name?: string;
+            options?: string[];
+            required?: boolean;
+            /** @enum {string} */
+            type?: "text" | "textarea" | "url" | "boolean" | "select" | "date" | "uploads_with_description" | "catalog_products";
         };
         CatalogSocialLimits: {
             /**
@@ -5256,14 +5441,20 @@ export interface operations {
              *     | Code | Meaning |
              *     | --- | --- |
              *     | `1101` | Invalid organization |
-             *     | `806` | Invalid upload identifier. One of the gallery_uploads does not belong to the organization. |
+             *     | `806` | Invalid upload identifier. One of the gallery_uploads, or one of the `source.images`, does not belong to the organization. |
              *     | `924` | Max publications reached per month. There is no room in the organization's monthly publication limit for the generated posts. |
              *     | `941` | AI credits exhausted for this month. The base cost of the plan exceeds the remaining AI credits. The response data carries { used, limit, cost }. |
              *     | `2101` | This functionality requires a plan with artificial intelligence (available from the basic plan). |
-             *     | `2103` | All accounts must belong to the organization. |
+             *     | `2103` | All accounts must belong to the organization. Also when `source.id_account_catalog` is not one of them. |
              *     | `2105` | AI plan requires at least one account. |
-             *     | `2106` | Invalid AI plan options (missing prompt, invalid timezone, invalid week_start, invalid max_images or invalid publish_days). |
+             *     | `2106` | Invalid AI plan options (missing prompt, invalid timezone, invalid week_start, invalid max_images or invalid publish_days). Also when an option is not accepted by the chosen template: `shared` on one whose `allows_shared` is false, or `gallery_uploads` on one whose `allows_gallery` is false. |
              *     | `2108` | The selected publish days leave no available slot in the plan week: every slot of the chosen days is already in the past. Pick more days or a later week_start. The response data carries { publish_days, week_start, timezone }. |
+             *     | `2111` | Invalid planner template: `template` is not one of the ones published by `GET /planner_templates`. |
+             *     | `2112` | Invalid or missing `source` for the chosen template: a field is missing, an id is not valid, there are more units than `max_source_items`, an image has no description, a product is no longer in the catalogue, or the event date falls before the plan week or more than 60 days after it. `data` says which one and why. |
+             *     | `2113` | Could not read the source URL (`from_text`): the download failed, answered something that is not text or HTML, or the page carried no usable text. Paste the article in `source.text` instead. |
+             *     | `2114` | The source URL points to a non-public address (`from_text`): loopback, private, link-local or CGNAT. Checked before every redirect and again when the socket opens. |
+             *     | `2115` | The selected account has no usable product catalogue (`from_catalog`): its network has no products, or the catalogue could not be read — expired token, deleted catalogue, missing permission — or came back empty. |
+             *     | `2116` | The source has no usable items: no images, no products, or no text at all (neither `url` nor `text`, or a pasted text under 200 characters). |
              *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
              */
             400: {
@@ -5432,7 +5623,7 @@ export interface operations {
              *
              *     | Code | Meaning |
              *     | --- | --- |
-             *     | `2102` | The plan is not under review: only a `generated` plan can be regenerated |
+             *     | `2102` | The plan is not under review (only a `generated` plan can be regenerated), or this plan template does not allow regenerating that target — read `regenerate` in `GET /planner_templates` |
              *     | `2106` | Invalid `target`: it has to be `text` or `image` |
              *     | `935` | That publication does not belong to this plan, or is no longer a draft |
              *     | `941` | AI credits exhausted for this month |
@@ -10311,6 +10502,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getPlannerTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available planner templates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        templates?: components["schemas"]["CatalogPlannerTemplate"][];
+                    };
+                };
+            };
+            /** @description Error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

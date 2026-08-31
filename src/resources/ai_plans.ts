@@ -26,6 +26,38 @@
  *  - **Estas rutas cuelgan del CLIENTE**, no sólo de la organización: llevan los dos identificadores.
  *  - **Borrar es cancelar.** El plan pasa a `cancelled` y deja de aparecer en el listado, pero
  *    {@link AiPlansResource.get} lo sigue devolviendo.
+ *
+ * LAS PLANTILLAS: DE QUÉ SE GENERA EL PLAN
+ *
+ * `template` dice de qué sale el contenido, y es lo único que cambia entre un plan y otro: los días
+ * de publicación, el idioma, el tono, el `shared` y las imágenes siguen siendo opciones
+ * transversales. Es **opcional** — sin ella el plan es `standard`, exactamente lo que hacía cualquier
+ * plan antes de que existieran—, y cada plantilla declara qué opciones admite: mandarle una que no
+ * admite es un 2106, no un silencio.
+ *
+ *  - **`standard`** — un prompt de temática y las imágenes las genera el modelo. La de siempre.
+ *  - **`from_images`** — las fotos del usuario, cada una con su descripción. Una sola pasada de
+ *    visión sobre TODAS a la vez, para que el modelo pueda encadenar una historia (la foto 3 el
+ *    "antes", la 7 el "después") en vez de escribir siete publicaciones sueltas.
+ *  - **`from_text`** — un artículo: una URL que se descarga al crear el plan, o el texto pegado.
+ *  - **`from_catalog`** — los productos de un catálogo conectado, leídos EN VIVO con su nombre, su
+ *    precio y su foto.
+ *  - **`campaign`** — una cuenta atrás hacia una fecha, con arco narrativo: expectativa, anuncio,
+ *    recordatorio, es hoy, cierre.
+ *
+ * Y lo que sorprende de ellas:
+ *
+ *  - **La que no genera imágenes no gasta créditos de imagen, y son el 94 % del plan.** La misma
+ *    semana de 7 publicaciones con foto cuesta 519 créditos en `standard` y 48 en `from_images`.
+ *  - **La fuente se valida al CREAR**, no al generar: el artículo se descarga, el catálogo se lee y
+ *    las fotos de los productos se copian ahí mismo. Así una fuente rota falla mientras el usuario
+ *    sigue delante (2112-2116), y lo que se guarda es una FOTO — un `retry` tres días después no
+ *    depende de que el artículo siga en línea.
+ *  - **Un plan es SEMANAL y la fuente no lo alarga.** 12 fotos con 6 huecos publican 6 y el plan
+ *    trae el aviso 2117 en `warnings`; los huecos son los días de publicación por las cuentas, así
+ *    que se puede decir antes de crearlo.
+ *  - **La lista, los costes y los campos se piden**: {@link CatalogResource.plannerTemplates}. No se
+ *    escriben a mano — son precios.
  */
 import { Resource, requireId } from "./base.js";
 import type { RequestOptions, SuccessResponse } from "./base.js";
@@ -58,6 +90,29 @@ export class AiPlansResource extends Resource {
      *     options: { publish_days: [1, 3, 5], timezone: "Europe/Madrid" },
      * });
      * ```
+     *
+     * Con plantilla van además `template` y su `source`, que **se valida aquí**: la URL se descarga
+     * y el catálogo se lee dentro de esta llamada, así que sus errores llegan mientras el usuario
+     * sigue delante — 2111 (plantilla que no existe), 2112 (fuente que no cuadra con la plantilla),
+     * 2113 (la URL no se pudo leer), 2114 (la URL apunta a una dirección no pública), 2115 (la
+     * cuenta no tiene un catálogo utilizable) y 2116 (la fuente se quedó sin unidades).
+     *
+     * ```ts
+     * await pv.aiPlans.create(clientId, orgId, {
+     *     prompt: "Nuestra carta de otoño",
+     *     accounts: [accountId],
+     *     template: "from_images",
+     *     source: {
+     *         images: [
+     *             { id_upload: primera, description: "Masa reposando en el banco" },
+     *             { id_upload: segunda, description: "La hogaza saliendo del horno" },
+     *         ],
+     *     },
+     * });
+     * ```
+     *
+     * **El orden de `images` y de `products` es la historia**: el orquestador se queda con la
+     * posición de cada uno, así que la foto 3 puede ser el "antes" y la 7 el "después".
      */
     async create(
         idClient: string,
@@ -165,6 +220,12 @@ export class AiPlansResource extends Resource {
      * Regenera con IA el texto o la imagen de UNA publicación del plan. **Cuesta créditos** cada vez.
      *
      * `credits_spent` de la respuesta es el total del plan, no lo que costó esta llamada.
+     *
+     * **`"image"` depende de la plantilla del plan**, no sólo de que el plan permitiera imágenes:
+     * la que no generó la imagen tampoco la regenera. Míralo en `regenerate.image` de
+     * {@link CatalogResource.plannerTemplates} antes de ofrecer el botón — en `from_images` y en
+     * `from_catalog` sería cobrarle 70 créditos al usuario por sustituir su propia foto por una
+     * inventada.
      */
     async regenerate(
         idClient: string,

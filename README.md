@@ -102,7 +102,7 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 
 | Resource           | Methods                                                                                                                                                                                                            |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages` — all cached in memory per client |
+| `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages`, `plannerTemplates` — all cached in memory per client |
 | `pv.clients`       | `list`, `iterate`, `get`, `update`, `updateAiSettings`, `withOrganizations`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                             |
 | `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`, `updateAiContext`, `updateSocialCredentials`, `deleteSocialCredentials`                            |
 | `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                                               |
@@ -137,6 +137,54 @@ your own client — so they cannot describe an endpoint that does not exist. One
 exception to "generated": every enumeration that grows
 with the product — `SocialNetwork`, `PublicationState`, `FileFormat` — is **open**. The known values
 autocomplete, and a network added to PlanVortex next month does not break your build.
+
+## AI plans, and what they are generated from
+
+A plan is a **week** of drafts written by a model: you queue it, a job generates it, and what comes
+out are ordinary publications in `draft` that you edit and validate. `template` says what the
+content is generated FROM, and it is the only thing that changes between one plan and another —
+publish days, language, tone and images stay cross-cutting options, and each template declares which
+of them it accepts.
+
+```ts
+// The list, the prices and the fields of the source step. Cached, like the rest of the catalogue.
+const templates = await pv.catalog.plannerTemplates();
+
+// A week written from the customer's own photos, in the order that tells the story.
+const { ai_plan, estimate } = await pv.aiPlans.create(clientId, orgId, {
+    prompt: "Our autumn menu",
+    accounts: [accountId],
+    template: "from_images",
+    source: {
+        images: [
+            { id_upload: first, description: "Dough resting on the bench" },
+            { id_upload: second, description: "The loaf coming out of the oven" },
+        ],
+    },
+});
+console.log(estimate.images_target); // 0 — the pictures come from the source
+```
+
+Four things worth knowing before you build the screen:
+
+- **The template that does not generate images does not spend image credits, and images are 94 % of
+  a plan.** The same week — 7 publications, a picture on each — costs 519 credits as `standard` and
+  **48** as `from_images`. Say it before the plan is created, not after it is charged.
+- **`regenerate("image")` is per template**, not just per plan: the one that did not generate the
+  picture cannot regenerate it. Read `regenerate.image` from the catalogue before you draw the
+  button — on `from_images` it would charge 70 credits to replace the user's own photo with an
+  invented one.
+- **The source is validated when the plan is CREATED**, not when it is generated: the article is
+  downloaded, the catalogue is read live and the product pictures are copied inside that call. So a
+  broken source fails while your user is still there (2112 to 2116), and what gets stored is a
+  snapshot — a `retry` three days later does not depend on the article still being online.
+- **A plan is weekly and the source does not extend it.** Twelve photos with six slots left publish
+  six, and the plan carries warning **2117** in `ai_plan.warnings` — a notice on a plan that
+  generated fine, not an error. The slots are your publish days times your accounts, so you can say
+  it in advance.
+
+Do not hardcode the list, the costs or the field limits: `GET /planner_templates` publishes them
+because the server is what charges them.
 
 ## The inbox
 

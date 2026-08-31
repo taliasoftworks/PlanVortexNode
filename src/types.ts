@@ -177,6 +177,42 @@ export type SocialCapabilities = Schemas["CommentsSocialCapabilities"];
  */
 export type CommentActions = Schemas["CommentsCommentActions"];
 
+/**
+ * De QUE se genera un plan: la fuente del contenido, no un flujo distinto del asistente.
+ *
+ * `shared`, `publish_days`, `language`, `tone` y las imagenes siguen siendo opciones transversales,
+ * y cada plantilla declara cuales admite. Es una enumeracion ABIERTA por lo mismo que las redes: la
+ * lista crece, y una plantilla nueva en el servidor no puede dejar de compilar el codigo de quien
+ * no ha actualizado el paquete.
+ */
+export type PlannerTemplateName = OpenEnum<NonNullable<Schemas["CatalogPlannerTemplate"]["template"]>>;
+
+/**
+ * Una plantilla del planificador, tal y como la publica `GET /planner_templates`.
+ *
+ * **`generates_images: false` significa que las fotos las pone la FUENTE** —las del usuario, las
+ * del catalogo— y el plan no gasta ni un credito de imagen: la misma semana de 7 publicaciones con
+ * foto pasa de 519 creditos a 48. Es lo que hay que decir ANTES de crear el plan, no despues.
+ *
+ * Y `regenerate` es por plantilla: la que no genero la imagen tampoco puede regenerarla. Ofrecer
+ * ese boton igualmente es cobrarle al usuario 70 creditos por sustituir su propia foto por una
+ * inventada.
+ */
+export type PlannerTemplate = Schemas["CatalogPlannerTemplate"];
+
+/**
+ * Un campo del paso de fuente.
+ *
+ * `max` y `min` van en las unidades DEL CAMPO: caracteres de un texto, elementos de una lista y
+ * **dias** de una fecha —los 60 de `event_date` son cuanto puede alejarse el evento de la semana
+ * del plan—. `uploads_with_description` y `catalog_products` son la senal de que ese campo
+ * necesita un componente propio; los demas son controles corrientes.
+ */
+export type PlannerTemplateField = Schemas["CatalogPlannerTemplateField"];
+
+/** El control de un campo de fuente. Abierto: el catalogo de tipos ya se ha ampliado antes. */
+export type PlannerTemplateFieldType = OpenEnum<NonNullable<PlannerTemplateField["type"]>>;
+
 // ---------------------------------------------------------------------------------------------
 // Cliente, organizacion y plan
 // ---------------------------------------------------------------------------------------------
@@ -685,6 +721,13 @@ export type IntegrationPickerConfig =
  * plan lo devuelve con las publicaciones enteras y sus ficheros, y el LISTADO devuelve sus
  * identificadores. `organization_context` es una FOTO del contexto de marca de la organizacion en
  * el momento de crear el plan, no el de ahora: es lo que hace que un reintento sea reproducible.
+ *
+ * `template` viene SIEMPRE —un plan anterior a las plantillas se lee `standard`— y `source` es la
+ * misma clase de foto que `organization_context`: el articulo ya descargado, las fotos elegidas o
+ * los productos copiados, no una referencia viva. Por eso un reintento tres dias despues no depende
+ * de que el articulo siga en linea ni de que el producto siga en el catalogo.
+ *
+ * Y `warnings` no es un error: son avisos del ULTIMO intento sobre un plan que se genero bien.
  */
 export type AiPlan = Schemas["AiPlansAiPlan"];
 
@@ -697,8 +740,65 @@ export type AiPlanOptions = Schemas["AiPlansAiPlanOptions"];
 /** Las opciones tal y como se MANDAN: todas opcionales, los defaults los pone el servidor. */
 export type AiPlanOptionsInput = Schemas["AiPlansAiPlanOptionsInput"];
 
-/** Lo que se manda para encolar un plan. */
+/**
+ * Lo que se manda para encolar un plan.
+ *
+ * `template` y `source` son OPCIONALES: sin ellos el plan es `standard`, que es exactamente lo que
+ * hacia cualquier plan antes de que existieran las plantillas. Mandar una opcion que la plantilla
+ * elegida no admite —un `shared` en `from_images`— es un 2106, no un silencio.
+ */
 export type AiPlanCreateRequest = Schemas["AiPlansAiPlanCreateRequest"];
+
+/**
+ * La fuente del plan, tal y como se MANDA. **Una forma por plantilla**: manda solo los campos de la
+ * que elegiste —lo que no lee se ignora, y lo que necesita y no recibe es un 2112—.
+ *
+ * | Plantilla | Campos |
+ * | --- | --- |
+ * | `standard` | ninguno: no tiene fuente |
+ * | `from_images` | `images` |
+ * | `from_text` | `url` **o** `text` |
+ * | `from_catalog` | `id_account_catalog`, `product_catalog_id`, `products` |
+ * | `campaign` | `event_name`, `event_date` |
+ *
+ * Se valida al CREAR el plan, no al generarlo: el articulo se descarga, el catalogo se lee en vivo
+ * y las fotos de los productos se copian, asi que una fuente que no funciona falla mientras el
+ * usuario sigue delante. Dos trampas que el tipo no puede decir: `text` GANA sobre `url` cuando
+ * llegan los dos —pegar el texto es lo que hace quien no consiguio que se descargara—, y
+ * `event_date` es un DIA DE CALENDARIO (`YYYY-MM-DD`), nunca un instante ISO.
+ */
+export type AiPlanSourceInput = Schemas["AiPlansAiPlanSourceInput"];
+
+/** Una foto de `from_images`. La descripcion es obligatoria a proposito: sin ella el modelo escribe sobre lo que cree ver. */
+export type AiPlanSourceImageInput = Schemas["AiPlansAiPlanSourceImageInput"];
+
+/**
+ * La fuente tal y como quedo GUARDADA: una foto del momento de crear el plan, no una referencia
+ * viva. Es lo que hace que un reintento reproduzca el mismo plan.
+ */
+export type AiPlanSource = Schemas["AiPlansAiPlanSource"];
+
+/**
+ * Un producto del catalogo, copiado al crear el plan.
+ *
+ * `price` viene **exactamente como lo devolvio la red** (`"9,99 €"`) y no se convierte nunca: el
+ * mismo campo es un numero en otros caminos de la API de Meta y no hay forma de saber si son
+ * unidades o centimos. Dividir por 100 "por si acaso" es como se anuncia un producto de 10 € a
+ * 0,10 €. Y `id_upload` es la foto ya copiada a un fichero de la organizacion, porque la URL del
+ * CDN de la red caduca.
+ */
+export type AiPlanSourceProduct = Schemas["AiPlansAiPlanSourceProduct"];
+
+/**
+ * Algo que el plan tiene que decir de si mismo, con la forma de un error de la API. Lo comparten
+ * `error` (solo en estado `failed`) y `warnings` (en un plan que se genero bien).
+ *
+ * Hoy hay un aviso: **2117 — parte de la fuente no cabia en la semana del plan**. Un plan es
+ * SEMANAL y la fuente no lo alarga, asi que 12 fotos con 6 huecos libres publican 6 y las demas se
+ * quedan fuera; `data` trae `{source_items, capacity}`. Se dice mejor ANTES de crear el plan —los
+ * huecos son los dias de publicacion por las cuentas— que despues de haberlo cobrado.
+ */
+export type AiPlanNotice = Schemas["AiPlansAiPlanNotice"];
 
 /**
  * El presupuesto DETERMINISTA de un plan, calculado por el servidor y nunca por el modelo.

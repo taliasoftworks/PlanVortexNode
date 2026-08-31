@@ -136,6 +136,54 @@ describeLive("catálogo", () => {
         expect(Object.keys(publicationLimits).length).toBeGreaterThan(0);
     });
 
+    /**
+     * Las plantillas del planificador, que es la entrada del catálogo que MÁS caro sale copiar:
+     * lleva precios dentro. La capa 2 simula la respuesta, así que jamás vería que el servidor ha
+     * cambiado lo que cobra ni que ha entrado una plantilla nueva — que es exactamente lo que esta
+     * capa existe para enterarse.
+     *
+     * Lo que se cruza aquí es el invariante que hace barata la plantilla y del que cuelga el
+     * consejo que la librería da: **la que no genera la imagen tampoco la regenera**. Si algún día
+     * dejara de cumplirse, el `README` estaría mintiendo.
+     */
+    it("publica las plantillas del planificador con sus costes y sus campos", async () => {
+        const templates = await liveClient().catalog.plannerTemplates();
+
+        expect(templates.length).toBeGreaterThanOrEqual(5);
+
+        for (const template of templates) {
+            expect(typeof template.template, JSON.stringify(template)).toBe("string");
+            expect(typeof template.orchestration_cost, `${template.template}.orchestration_cost`).toBe(
+                "number",
+            );
+            expect(typeof template.generates_images, `${template.template}.generates_images`).toBe(
+                "boolean",
+            );
+
+            //El invariante: sin imagen generada no hay imagen que regenerar. Lo contrario le cobraría
+            //al usuario 70 créditos por cambiar su propia foto por una inventada.
+            if (template.generates_images === false) {
+                expect(template.regenerate?.image, `${template.template}.regenerate.image`).toBe(false);
+            }
+
+            //Y un tope de unidades sin un campo que las recoja sería un número que nadie puede usar.
+            if ((template.max_source_items ?? 0) > 0) {
+                expect(template.source_fields?.length, `${template.template}.source_fields`).toBeGreaterThan(
+                    0,
+                );
+            }
+
+            //`source_requires_any` sólo puede nombrar campos que la plantilla declare.
+            for (const name of template.source_requires_any ?? []) {
+                const declared = (template.source_fields ?? []).some((field) => field.name === name);
+                expect(declared, `${template.template}.source_requires_any: ${name}`).toBe(true);
+            }
+        }
+
+        //`standard` no puede desaparecer: es lo que tarifa un plan que no manda `template`.
+        expect(templates.map((template) => template.template)).toContain("standard");
+    });
+
     it("el catálogo se cachea: dos lecturas, una petición", async () => {
         let calls = 0;
         const pv = liveClient({

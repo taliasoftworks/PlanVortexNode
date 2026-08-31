@@ -12,6 +12,13 @@
  *  - **`options` guardadas != `options` mandadas**: lo devuelto viene normalizado y con todos los
  *    defaults resueltos, incluidos `shared` y `use_organization_context`, que el spec ni tenía.
  *  - **Borrar es cancelar**: el plan sigue existiendo, sólo deja de listarse.
+ *
+ * Y de la fase de plantillas:
+ *
+ *  - **`template` y `source` son OPCIONALES**: un cuerpo sin ellos tiene que seguir saliendo tal
+ *    cual, porque es lo que manda quien integró con este paquete antes de que existieran.
+ *  - **La fuente se valida al CREAR**, así que sus errores (2112-2116) llegan en esta llamada.
+ *  - **`warnings` viaja DENTRO del plan generado**: el 2117 no es un error de la respuesta.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -37,6 +44,19 @@ const options = {
     use_organization_context: true,
     gallery_uploads: [],
 };
+
+const estimate = {
+    base_cost: 420,
+    estimated_cost: 1120,
+    texts_target: 3,
+    images_target: 3,
+    available_credits: 5000,
+};
+
+const images = [
+    { id_upload: "66d04a6a427f4c43b9d97f70", description: "Masa reposando en el banco" },
+    { id_upload: "66d04a6a427f4c43b9d97f71", description: "La hogaza saliendo del horno" },
+];
 
 const aiPlan = {
     _id: AI_PLAN_ID,
@@ -85,6 +105,89 @@ describe("aiPlans.create", () => {
         //Y el presupuesto viene entero, no sólo el atajo.
         expect(result.estimate.base_cost).toBe(420);
         expect(result.estimated_cost).toBe(result.estimate.estimated_cost);
+    });
+
+    /**
+     * Sin `template` el cuerpo sale exactamente igual que antes de que existieran las plantillas, y
+     * eso es contrato: el servidor tarifa como `standard`. Un paquete que rellenase el hueco con un
+     * `template: "standard"` "por claridad" estaría cambiando lo que sale por el cable de todos los
+     * integradores que ya estaban.
+     */
+    it("no inventa una plantilla cuando no se le da ninguna", async () => {
+        const calls = api.mock("post", LIST, { ai_plan: aiPlan, estimated_cost: 519, estimate });
+        const pv = api.client();
+
+        await pv.aiPlans.create(CLIENT_ID, ORG_ID, {
+            prompt: "Pan de masa madre, horno de leña, barrio",
+            accounts: [ACCOUNT_ID],
+        });
+
+        expect(calls[0]?.body).toEqual({
+            prompt: "Pan de masa madre, horno de leña, barrio",
+            accounts: [ACCOUNT_ID],
+        });
+    });
+
+    /**
+     * Con `from_images` la fuente viaja tal cual, **con las fotos en su orden**: la posición es lo
+     * que el orquestador guarda como `source_index`, y es lo que deja que la foto 3 sea el "antes"
+     * y la 7 el "después". Reordenarlas por el camino sería el copy del entrante con la foto del
+     * postre.
+     */
+    it("manda la plantilla y su fuente, con las fotos en el orden que cuenta la historia", async () => {
+        const calls = api.mock("post", LIST, {
+            ai_plan: { ...aiPlan, template: "from_images", source: { images } },
+            estimated_cost: 48,
+            estimate: { ...estimate, base_cost: 48, estimated_cost: 48, images_target: 0 },
+        });
+        const pv = api.client();
+
+        const result = await pv.aiPlans.create(CLIENT_ID, ORG_ID, {
+            prompt: "Nuestra carta de otoño",
+            accounts: [ACCOUNT_ID],
+            template: "from_images",
+            source: { images },
+        });
+
+        expect(calls[0]?.body).toEqual({
+            prompt: "Nuestra carta de otoño",
+            accounts: [ACCOUNT_ID],
+            template: "from_images",
+            source: { images },
+        });
+        //Las fotos las pone la fuente, así que el plan no financia ni una imagen: es de donde sale
+        //el 519 -> 48 de la misma semana.
+        expect(result.estimate.images_target).toBe(0);
+        expect(result.ai_plan.source?.images?.[0]?.description).toBe("Masa reposando en el banco");
+    });
+
+    /**
+     * `event_date` es un DÍA DE CALENDARIO. `toISOString()` desde un navegador convertiría el 15 de
+     * septiembre en el 14 por la tarde para media América — un día entero de desfase en una cuenta
+     * atrás, y sin error en ninguna parte —, así que lo que sale por el cable tiene que ser
+     * `YYYY-MM-DD` y nada más.
+     */
+    it("manda la fecha de campaign como día de calendario, no como instante", async () => {
+        const calls = api.mock("post", LIST, {
+            ai_plan: {
+                ...aiPlan,
+                template: "campaign",
+                source: { event: { name: "Apertura del local", date: "2026-09-15T00:00:00.000+02:00" } },
+            },
+            estimated_cost: 519,
+            estimate,
+        });
+        const pv = api.client();
+
+        await pv.aiPlans.create(CLIENT_ID, ORG_ID, {
+            prompt: "Abrimos tienda en el barrio",
+            accounts: [ACCOUNT_ID],
+            template: "campaign",
+            source: { event_name: "Apertura del local", event_date: "2026-09-15" },
+        });
+
+        const body = calls[0]?.body as { source: { event_date: string } };
+        expect(body.source.event_date).toBe("2026-09-15");
     });
 });
 
@@ -166,5 +269,38 @@ describe("aiPlans.remove", () => {
 
         await expect(pv.aiPlans.remove(CLIENT_ID, ORG_ID, AI_PLAN_ID)).resolves.toBeUndefined();
         expect(calls[0]?.method).toBe("DELETE");
+    });
+});
+
+/**
+ * El 2117 no es un error: el plan se generó perfectamente y lo que pasó es que la fuente traía más
+ * unidades que huecos tiene la semana. Va en `warnings` DENTRO del plan, junto a un `state` que
+ * dice `generated`, y no en el error de la respuesta — que es donde lo buscaría quien no lo sepa.
+ */
+describe("los avisos del plan", () => {
+    it("trae el 2117 en `warnings` sobre un plan generado, no como error", async () => {
+        api.mock("get", ONE, {
+            ai_plan: {
+                ...aiPlan,
+                state: "generated",
+                template: "from_images",
+                publications: [publication],
+                warnings: [
+                    {
+                        code: 2117,
+                        message: "Some source items did not fit in the plan week",
+                        data: { source_items: 12, capacity: 6 },
+                    },
+                ],
+            },
+        });
+        const pv = api.client();
+
+        const plan = await pv.aiPlans.get(CLIENT_ID, ORG_ID, AI_PLAN_ID);
+
+        expect(plan.state).toBe("generated");
+        expect(plan.error).toBeUndefined();
+        expect(plan.warnings?.[0]?.code).toBe(2117);
+        expect(plan.warnings?.[0]?.data).toEqual({ source_items: 12, capacity: 6 });
     });
 });

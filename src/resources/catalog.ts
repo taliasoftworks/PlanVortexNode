@@ -1,5 +1,6 @@
 /**
- * El catálogo: qué redes hay, qué sabe hacer cada una y contra qué límites se valida.
+ * El catálogo: qué redes hay, qué sabe hacer cada una, contra qué límites se valida y de qué se
+ * puede generar un plan de IA.
  *
  * POR QUÉ SE CACHEA: son constantes del despliegue. No dependen del cliente, no dependen de la
  * organización y no cambian entre dos llamadas — cambian cuando se despliega el servidor. Un
@@ -20,6 +21,7 @@ import type { RequestOptions } from "./base.js";
 import type {
     AspectRatiosByNetwork,
     CommentActions,
+    PlannerTemplate,
     PublicationLimits,
     SocialCapabilities,
     SocialLimits,
@@ -127,6 +129,37 @@ export class CatalogResource extends Resource {
     async allowedAspectRatios(options?: RequestOptions): Promise<AspectRatiosByNetwork> {
         return this.cached("/allowed_aspect_ratios", () =>
             this.httpGet<AspectRatiosByNetwork>("/allowed_aspect_ratios", undefined, options),
+        );
+    }
+
+    /**
+     * Las plantillas del planificador de IA: de QUÉ se puede generar un plan y qué admite cada
+     * fuente. Se manda la elegida como `template` al crear el plan, junto con su `source`.
+     *
+     * Es catálogo por la misma razón que los límites —quien valida es quien anuncia—, y aquí la
+     * copia sale especialmente cara porque son **precios**: una tabla escrita a mano en tu interfaz
+     * enseñaría un coste que el servidor ya no cobra.
+     *
+     * Lo que hay que leer de aquí y no dar por sabido:
+     *
+     *  - **`generates_images: false` es que las fotos las pone la fuente**, y entonces el plan no
+     *    gasta ni un crédito de imagen. La misma semana de 7 publicaciones con foto pasa de 519
+     *    créditos a 48, y eso se dice ANTES de crear el plan.
+     *  - **`regenerate` es por plantilla.** La que no generó la imagen tampoco la regenera: pintar
+     *    ese botón igualmente le cuesta al usuario 70 créditos por cambiar su propia foto por una
+     *    inventada.
+     *  - **`orchestration_cost` es una ESTIMACIÓN**, no la factura: se cobra por uso.
+     *    `orchestration_cost_per_source_item` es lo que añade cada unidad de la fuente.
+     *  - **Un plan es SEMANAL y la fuente no lo alarga.** Con más unidades que huecos quedan en la
+     *    semana, las de más se descartan y el plan trae el aviso 2117 en `warnings`.
+     *  - **`source_fields` es de lo que está hecho el paso de fuente**, con sus propios `max` y
+     *    `min` —en las unidades del campo: caracteres, elementos, o **días** en una fecha— y
+     *    `source_requires_any` nombrando los campos de los que hace falta al menos uno (en
+     *    `from_text`, la URL o el texto pegado).
+     */
+    async plannerTemplates(options?: RequestOptions): Promise<PlannerTemplate[]> {
+        return this.cached("/planner_templates", () =>
+            this.getOne<PlannerTemplate[]>("/planner_templates", "templates", undefined, options),
         );
     }
 

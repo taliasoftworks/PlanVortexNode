@@ -119,6 +119,105 @@ describe("catalog", () => {
         expect(first).toHaveLength(2);
     });
 
+    /**
+     * El sobre es `{templates}` y no un array pelado, que es la unica ruta del catálogo que lo
+     * lleva: un método que devolviera la respuesta entera daría `undefined` al recorrerla, sin
+     * error. Y la ficha se pin entera porque son PRECIOS —lo que el servidor cobra— y una copia a
+     * mano en la interfaz de un integrador enseñaría un coste que ya no es.
+     */
+    it("desenvuelve `{templates}` y trae la ficha entera de cada plantilla", async () => {
+        const calls = api.mock("get", "/planner_templates", {
+            templates: [
+                {
+                    template: "standard",
+                    allows_shared: true,
+                    allows_gallery: true,
+                    generates_images: true,
+                    regenerate: { text: true, image: true },
+                    orchestration_cost: 15,
+                    orchestration_cost_per_source_item: 0,
+                    max_source_items: 0,
+                    source_fields: [],
+                },
+                {
+                    template: "from_images",
+                    allows_shared: false,
+                    allows_gallery: false,
+                    generates_images: false,
+                    regenerate: { text: true, image: false },
+                    orchestration_cost: 20,
+                    orchestration_cost_per_source_item: 2,
+                    max_source_items: 20,
+                    source_fields: [
+                        { name: "images", type: "uploads_with_description", required: true, max: 20 },
+                    ],
+                },
+            ],
+        });
+        const pv = api.client();
+
+        const templates = await pv.catalog.plannerTemplates();
+
+        expect(calls[0]?.method).toBe("GET");
+        expect(calls[0]?.path).toBe("/planner_templates");
+        expect(templates.map((t) => t.template)).toEqual(["standard", "from_images"]);
+
+        const fromImages = templates[1];
+        //Lo que hace barata la plantilla, y lo que hay que decir ANTES de crear el plan: las fotos
+        //las pone la fuente, así que el plan no gasta un solo crédito de imagen.
+        expect(fromImages?.generates_images).toBe(false);
+        //Y por eso mismo el botón de regenerar imagen no se pinta: serían 70 créditos por cambiar
+        //la foto del usuario por una inventada.
+        expect(fromImages?.regenerate?.image).toBe(false);
+        expect(fromImages?.orchestration_cost_per_source_item).toBe(2);
+        expect(fromImages?.max_source_items).toBe(20);
+        expect(fromImages?.source_fields?.[0]?.type).toBe("uploads_with_description");
+    });
+
+    /**
+     * `source_requires_any` es lo que un `required` de campo no sabe decir: en `from_text` hace
+     * falta la URL **o** el texto pegado, y ninguno de los dos por separado es obligatorio. Sin
+     * publicarlo, esa regla acabaría escrita a mano en cada interfaz — justo la copia que el
+     * catálogo existe para evitar.
+     */
+    it("publica los campos de los que hace falta al menos uno", async () => {
+        api.mock("get", "/planner_templates", {
+            templates: [
+                {
+                    template: "from_text",
+                    generates_images: true,
+                    orchestration_cost: 17,
+                    max_source_items: 0,
+                    source_fields: [
+                        { name: "url", type: "url", required: false },
+                        { name: "text", type: "textarea", required: false, min: 200, max: 12000 },
+                    ],
+                    source_requires_any: ["url", "text"],
+                },
+            ],
+        });
+        const pv = api.client();
+
+        const [fromText] = await pv.catalog.plannerTemplates();
+
+        expect(fromText?.source_requires_any).toEqual(["url", "text"]);
+        //El mínimo viaja por lo mismo que el máximo: si lo escribe la interfaz, el usuario se come
+        //un 2116 DESPUÉS de haber pegado el texto en vez de mientras lo pega.
+        expect(fromText?.source_fields?.[1]?.min).toBe(200);
+        expect(fromText?.source_fields?.[1]?.max).toBe(12000);
+    });
+
+    /** Y se cachean como el resto: son constantes del despliegue, no dependen de la organización. */
+    it("cachea las plantillas del planificador", async () => {
+        const calls = api.mock("get", "/planner_templates", { templates: [] });
+        const pv = api.client();
+
+        await pv.catalog.plannerTemplates();
+        await pv.catalog.plannerTemplates();
+
+        expect(calls).toHaveLength(1);
+    });
+
     it("las redes que publican son un array y se cachean como el resto del catálogo", async () => {
         const calls = api.mock("get", "/allowed_social_publications", ["instagram", "bluesky"]);
         const pv = api.client();
