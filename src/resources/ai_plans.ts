@@ -25,7 +25,13 @@
  *    que lunes/miércoles/viernes con 3 cuentas son 9 publicaciones, no 21.
  *  - **Estas rutas cuelgan del CLIENTE**, no sólo de la organización: llevan los dos identificadores.
  *  - **Borrar es cancelar.** El plan pasa a `cancelled` y deja de aparecer en el listado, pero
- *    {@link AiPlansResource.get} lo sigue devolviendo.
+ *    {@link AiPlansResource.get} lo sigue devolviendo. Lo que SÍ desaparece de verdad son sus
+ *    publicaciones que aún no habían salido: las drafts y, si el plan ya estaba validado, lo que
+ *    quedara programado.
+ *  - **Archivar NO es borrar, y es la acción que casi siempre se busca.** {@link
+ *    AiPlansResource.archive} saca el plan del listado y no toca una sola publicación —lo
+ *    programado sigue publicándose—, vale en cualquier estado y se deshace. Los archivados se leen
+ *    con `list(..., { archived: true })`, nunca junto a los activos.
  *
  * LAS PLANTILLAS: DE QUÉ SE GENERA EL PLAN
  *
@@ -67,6 +73,15 @@ import type { AiPlan, AiPlanCreateRequest, AiPlanCreateResult, Paginated, Public
 
 /** Qué se regenera de una publicación del plan. `image` exige que el plan permitiera imágenes. */
 export type AiPlanRegenerateTarget = "text" | "image";
+
+/** Filtros del listado de planes. */
+export interface AiPlanListOptions extends PageOptions {
+    /**
+     * `true` devuelve los ARCHIVADOS en vez de los activos. Nunca los dos a la vez: archivar es
+     * mandar el plan a otro sitio, no ponerle una etiqueta que lo deje donde estaba.
+     */
+    archived?: boolean | undefined;
+}
 
 /** Lo que devuelve regenerar: la publicación nueva y lo que lleva gastado el plan EN TOTAL. */
 export interface AiPlanRegenerateResult {
@@ -144,20 +159,32 @@ export class AiPlansResource extends Resource {
     }
 
     /**
-     * Los planes de la organización, del más reciente al más antiguo.
+     * Los planes ACTIVOS de la organización, del más reciente al más antiguo.
      *
-     * **Los cancelados no salen**, y aquí `publications` son identificadores, no las publicaciones
-     * enteras: para eso está {@link get}. Sin `limit` vuelven todos.
+     * **Los cancelados no salen** —ni los archivados, que se piden con `archived: true`— y aquí
+     * `publications` son identificadores, no las publicaciones enteras: para eso está {@link get}.
+     * Sin `limit` vuelven todos.
+     *
+     * ```ts
+     * const activos = await pv.aiPlans.list(clientId, orgId);
+     * const guardados = await pv.aiPlans.list(clientId, orgId, { archived: true });
+     * ```
      */
     async list(
         idClient: string,
         idOrganization: string,
-        options: PageOptions & RequestOptions = {},
+        options: AiPlanListOptions & RequestOptions = {},
     ): Promise<Paginated<AiPlan>> {
         return this.getList<AiPlan>(
             this.path(idClient, idOrganization),
             "ai_plans",
-            { offset: options.offset, limit: options.limit },
+            {
+                offset: options.offset,
+                limit: options.limit,
+                //El servidor sólo entiende el literal "true"; un `false` explícito pediría lo
+                //mismo que no mandar nada, así que se omite en vez de viajar como ruido
+                archived: options.archived ? true : undefined,
+            },
             options,
         );
     }
@@ -166,7 +193,7 @@ export class AiPlansResource extends Resource {
     iterate(
         idClient: string,
         idOrganization: string,
-        options: PageOptions & RequestOptions = {},
+        options: AiPlanListOptions & RequestOptions = {},
     ): AsyncGenerator<AiPlan> {
         return iteratePages<AiPlan>(
             (page) => this.list(idClient, idOrganization, { ...options, ...page }),
@@ -243,8 +270,55 @@ export class AiPlansResource extends Resource {
     }
 
     /**
-     * Cancela el plan. **No lo borra**: pasa a `cancelled`, desaparece de {@link list} y
-     * {@link get} lo sigue devolviendo.
+     * Archiva el plan: sale del listado y pasa al de archivados (`list(..., { archived: true })`).
+     *
+     * Es **sólo visibilidad**. No toca ninguna publicación —lo que estuviera programado sigue
+     * publicándose—, no devuelve créditos y no cancela nada, así que vale en CUALQUIER estado,
+     * `generating` incluido: no interrumpe al job. Se deshace con {@link unarchive}.
+     *
+     * Es lo que se busca casi siempre que uno piensa en "quitar" un plan: {@link remove} se lleva
+     * por delante las publicaciones que aún no han salido, y esto no.
+     */
+    async archive(
+        idClient: string,
+        idOrganization: string,
+        idAiPlan: string,
+        options: RequestOptions = {},
+    ): Promise<AiPlan> {
+        return this.postOne<AiPlan>(
+            `${this.one(idClient, idOrganization, idAiPlan)}/archive`,
+            "ai_plan",
+            undefined,
+            options,
+        );
+    }
+
+    /** Devuelve el plan al listado activo. Sobre un plan que no estaba archivado no hace nada. */
+    async unarchive(
+        idClient: string,
+        idOrganization: string,
+        idAiPlan: string,
+        options: RequestOptions = {},
+    ): Promise<AiPlan> {
+        return this.postOne<AiPlan>(
+            `${this.one(idClient, idOrganization, idAiPlan)}/unarchive`,
+            "ai_plan",
+            undefined,
+            options,
+        );
+    }
+
+    /**
+     * Borra el plan **y sus publicaciones que aún no han salido**: las drafts generadas y, si ya se
+     * había validado, las que quedaran programadas. Las ya publicadas se quedan —borrarlas aquí no
+     * las quitaría de la red, sólo perdería su historial— y la que se está publicando en ese
+     * instante tampoco se toca.
+     *
+     * El plan en sí no se borra del todo: pasa a `cancelled`, desaparece de {@link list} y
+     * {@link get} lo sigue devolviendo. Los créditos gastados no se devuelven y un plan
+     * `generating` no se puede borrar (2102): hay que esperar a que el job termine.
+     *
+     * Si lo que se quiere es dejar de verlo sin perder nada, {@link archive}.
      */
     async remove(
         idClient: string,

@@ -97,12 +97,14 @@ describe("el paquete OpenAPI commiteado", () => {
     });
 
     /**
-     * 133 operaciones y el webhook de comentarios. No es una cifra de cobertura: es el alcance
+     * 135 operaciones y el webhook de comentarios. No es una cifra de cobertura: es el alcance
      * publico que se pacto en la fase 2, y si cambia es que alguien ha movido superficie publica.
-     * La 133 es `GET /planner_templates`, que entro con las plantillas del planificador.
+     * La 133 fue `GET /planner_templates`, que entro con las plantillas del planificador; la 134 y
+     * la 135 son `archive` y `unarchive` de un plan, que son dos rutas y no un cuerpo con un
+     * booleano.
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(133);
+        expect(operations(bundle.paths)).toHaveLength(135);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 

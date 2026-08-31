@@ -273,6 +273,57 @@ describe("aiPlans.remove", () => {
 });
 
 /**
+ * ARCHIVAR. Se parece a borrar en la pantalla y no se parece en nada por dentro: archivar no toca
+ * ninguna publicación y borrar se lleva lo que quedara programado. Son DOS rutas y no un cuerpo con
+ * un booleano, así que lo que hay que fijar es que cada método vaya a la suya.
+ */
+describe("aiPlans.archive y unarchive", () => {
+    it("cada una va a su ruta y desenvuelve `{ai_plan}`", async () => {
+        const archived = api.mock("post", `${ONE}/archive`, {
+            ai_plan: { ...aiPlan, archived_date: "2026-08-31T09:00:00.000Z" },
+        });
+        const restored = api.mock("post", `${ONE}/unarchive`, { ai_plan: aiPlan });
+        const pv = api.client();
+
+        const guardado = await pv.aiPlans.archive(CLIENT_ID, ORG_ID, AI_PLAN_ID);
+        const devuelto = await pv.aiPlans.unarchive(CLIENT_ID, ORG_ID, AI_PLAN_ID);
+
+        expect(archived[0]?.method).toBe("POST");
+        expect(restored[0]?.method).toBe("POST");
+        expect(guardado.archived_date).toBe("2026-08-31T09:00:00.000Z");
+        //Ausente, no `null`: es como llega cualquier plan activo, incluidos los de antes del campo
+        expect(devuelto.archived_date).toBeUndefined();
+    });
+
+    /** El estado NO cambia al archivar: un plan validado archivado sigue siendo `validated`. */
+    it("archivar no toca el estado del plan", async () => {
+        api.mock("post", `${ONE}/archive`, {
+            ai_plan: { ...aiPlan, state: "validated", archived_date: "2026-08-31T09:00:00.000Z" },
+        });
+        const pv = api.client();
+
+        const plan = await pv.aiPlans.archive(CLIENT_ID, ORG_ID, AI_PLAN_ID);
+
+        expect(plan.state).toBe("validated");
+    });
+
+    it("el listado pide el otro armario con `archived`, y sólo cuando se le pide", async () => {
+        const calls = api.mock("get", LIST, { ai_plans: [], total: 0 });
+        const pv = api.client();
+
+        await pv.aiPlans.list(CLIENT_ID, ORG_ID, { archived: true });
+        await pv.aiPlans.list(CLIENT_ID, ORG_ID, { archived: false });
+        await pv.aiPlans.list(CLIENT_ID, ORG_ID);
+
+        expect(calls[0]?.query.archived).toEqual(["true"]);
+        //`false` no viaja: el servidor activa el filtro con el literal "true", así que mandarlo
+        //sería ruido que además invita a creer que hay un tercer modo con los dos armarios juntos
+        expect(calls[1]?.query.archived).toBeUndefined();
+        expect(calls[2]?.query.archived).toBeUndefined();
+    });
+});
+
+/**
  * El 2117 no es un error: el plan se generó perfectamente y lo que pasó es que la fuente traía más
  * unidades que huecos tiene la semana. Va en `warnings` DENTRO del plan, junto a un `state` que
  * dice `generated`, y no en el error de la respuesta — que es donde lo buscaría quien no lo sepa.

@@ -42,7 +42,7 @@ export type {
     ConnectCallbackParams,
     ConnectLinksOptions,
 } from "./resources/accounts.js";
-export type { AiPlanRegenerateResult, AiPlanRegenerateTarget } from "./resources/ai_plans.js";
+export type { AiPlanListOptions, AiPlanRegenerateResult, AiPlanRegenerateTarget } from "./resources/ai_plans.js";
 export type { ContactExtraFilter, ContactListOptions } from "./resources/contacts.js";
 export type {
     MetricsGroupBy,

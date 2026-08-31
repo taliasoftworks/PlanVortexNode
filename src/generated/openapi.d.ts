@@ -341,7 +341,9 @@ export interface paths {
          * List AI publication plans
          * @description Return the organization's AI plans ordered by creation date (desc), paginated. Requires the ai_plans:read permission.
          *
-         *     **Cancelled plans are not listed.** Deleting a plan sets it to `cancelled` rather than removing it, and this listing filters those out — so a plan you deleted simply stops appearing, while `GET` by id still returns it.
+         *     **Active plans by default, archived ones with `archived=true`** — never both at once. Archiving is visibility only (see `POST .../archive`): the plan leaves this listing and keeps every publication it had.
+         *
+         *     **Cancelled plans are not listed either.** Deleting a plan sets it to `cancelled` rather than removing it, and this listing filters those out — so a plan you deleted simply stops appearing, while `GET` by id still returns it.
          *
          *     Without `limit` the whole list comes back.
          */
@@ -373,10 +375,36 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Cancel / discard an AI publication plan
-         * @description Discard the plan and delete its generated draft publications. AI credits already spent on generation are NOT refunded (same criterion as X: if the provider charged, we charge). Requires the ai_plans:delete permission.
+         * Delete an AI publication plan and its pending publications
+         * @description Delete the plan **and every publication of it that has not gone out yet**: the generated drafts and, if the plan was already validated, whatever was still scheduled. Two states are deliberately left alone: `sended`, because it is already live on the network and deleting it here would only lose its history while the post stays up, and `publishing`, which the publishing job holds at that very moment.
+         *
+         *     AI credits already spent on generation are NOT refunded (same criterion as X: if the provider charged, we charge). A plan being generated cannot be deleted (state `generating`, error 2102): wait for the job to finish.
+         *
+         *     To keep the plan and its publications and only take it out of the listing, archive it instead (`POST .../archive`). Requires the ai_plans:delete permission.
          */
         delete: operations["deleteAiPlan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clients/{id_client}/organizations/{id_organization}/ai_plans/{id_ai_plan}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive an AI publication plan
+         * @description Take the plan out of the default listing and move it to the archived one (`GET .../ai_plans?archived=true`). It is **visibility only**: no publication is touched — anything scheduled keeps publishing — no credits are refunded, and nothing is cancelled. It is reversible with `POST .../unarchive` and valid in **any state**, `generating` included, because it does not interrupt the generation job.
+         *
+         *     Archiving an already archived plan just refreshes `archived_date`. Requires the ai_plans:update permission.
+         */
+        post: operations["archiveAiPlan"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -422,6 +450,26 @@ export interface paths {
          * @description Re-queue a failed plan: it goes back to state 'pending' (attempts and error reset) and the background job regenerates it with the SAME data (prompt, accounts, options). Poll the plan while state is pending or generating, as after creation. Only valid from state 'failed'. Already-spent credits are NOT refunded and a new generation spends again; drafts left over from the failed attempt are discarded by the generation itself. If the failure was a business error (no AI credits, no monthly publication slots), retrying will fail the same way. Requires the ai_plans:update permission.
          */
         post: operations["retryAiPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clients/{id_client}/organizations/{id_organization}/ai_plans/{id_ai_plan}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive an AI publication plan
+         * @description Return the plan to the default listing: `archived_date` is cleared. Unarchiving a plan that was not archived does nothing and answers 200. Requires the ai_plans:update permission.
+         */
+        post: operations["unarchiveAiPlan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2604,6 +2652,15 @@ export interface components {
             _id: string;
             /** @description Accounts the plan was generated for. */
             accounts: string[];
+            /**
+             * Format: date-time
+             * @description When the plan was archived. Absent means it is active, which is how every plan created before archiving existed comes back.
+             *
+             *     It is a field of its own and NOT a value of `state` on purpose: `state` is the generation lifecycle and archiving is orthogonal to it — a `validated` plan that already published gets archived just like a `failed` one. Inside the enum you would have to decide which state it returns to when unarchived, and that question has no answer.
+             *
+             *     Archiving is visibility only: it takes the plan out of the default listing and touches no publication. Anything it had scheduled keeps publishing.
+             */
+            archived_date?: string;
             /** @description Generation attempts consumed (transient failures are retried, max 2). */
             attempts: number;
             /** Format: date-time */
@@ -5358,6 +5415,8 @@ export interface operations {
     getAiPlans: {
         parameters: {
             query?: {
+                /** @description `true` returns the archived plans instead of the active ones. Anything other than the literal string `true` is read as false. */
+                archived?: boolean;
                 /** @description Maximum number of records to return (pagination) */
                 limit?: number;
                 /** @description Number of records to skip (pagination) */
@@ -5577,6 +5636,57 @@ export interface operations {
             };
         };
     };
+    archiveAiPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description AI plan identifier */
+                id_ai_plan: components["parameters"]["AiPlansidAiPlan"];
+                /** @description Client identifier */
+                id_client: components["parameters"]["AiPlansidClient"];
+                /** @description Organization identifier */
+                id_organization: components["parameters"]["AiPlansidOrganization"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. Returns the plan with `archived_date` set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiPlansAiPlanOne"];
+                };
+            };
+            /**
+             * @description The request failed. The body carries the PlanVortex error code in `code`:
+             *
+             *     | Code | Meaning |
+             *     | --- | --- |
+             *     | `1101` | Invalid organization |
+             *     | `2100` | AI plan doesn't exist. The identifier is invalid or doesn't exist. |
+             *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unhandled error by the server */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     regenerateAiPlanPublication: {
         parameters: {
             query?: never;
@@ -5680,6 +5790,57 @@ export interface operations {
              *     | `1101` | Invalid organization |
              *     | `2100` | AI plan doesn't exist. The identifier is invalid or doesn't exist. |
              *     | `2102` | Invalid AI plan state for this operation. Only a plan in state 'failed' can be retried. |
+             *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unhandled error by the server */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unarchiveAiPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description AI plan identifier */
+                id_ai_plan: components["parameters"]["AiPlansidAiPlan"];
+                /** @description Client identifier */
+                id_client: components["parameters"]["AiPlansidClient"];
+                /** @description Organization identifier */
+                id_organization: components["parameters"]["AiPlansidOrganization"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. Returns the plan without `archived_date`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiPlansAiPlanOne"];
+                };
+            };
+            /**
+             * @description The request failed. The body carries the PlanVortex error code in `code`:
+             *
+             *     | Code | Meaning |
+             *     | --- | --- |
+             *     | `1101` | Invalid organization |
+             *     | `2100` | AI plan doesn't exist. The identifier is invalid or doesn't exist. |
              *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
              */
             400: {
