@@ -1231,7 +1231,7 @@ export interface paths {
          * The inbox: first-level comments across the whole organization
          * @description Served from PlanVortex's database, so it costs nothing and calls no social network. It is a **snapshot**: `collected_date` says when each row was last read. Open a thread to see what the network says right now.
          *
-         *     Ordered by `creation_date` descending — the date on the network, not the date we collected it — so rows from nine networks interleave correctly.
+         *     Ordered by `creation_date` descending — the date on the network, not the date we collected it — so rows from ten networks interleave correctly.
          *
          *     **On `telegram` the inbox starts the day the channel was connected.** The Bot API has no way to read the past: a bot only learns what happens while it is inside, so nothing written before the connection exists here and never will. Say so in your UI — an inbox that opens empty on a busy channel reads like a failure.
          *
@@ -1358,7 +1358,7 @@ export interface paths {
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
          *
-         *     **Read `authorization`, not `link`.** Nine of the eleven networks are `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
+         *     **Read `authorization`, not `link`.** Ten of the twelve networks are `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
          *
          *     • **WhatsApp is not a URL at all.** Its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.
          *     • **Telegram has a link and still is not a redirect.** It opens a chat with the PlanVortex bot, and nobody comes back from it: the account is born minutes later, from the bot being added to a channel, and it is announced over the WebSocket. Open it in another tab and keep listening; redirect to it and there is nobody left to tell.
@@ -2348,7 +2348,7 @@ export interface paths {
          *
          *     `comments` is the coarse gate — whether the network has comments at all. Which *actions* it allows on one is a finer question and lives in `GET /social_comment_actions`, because the shape here is `{[capability]: boolean}` and nesting an object inside would break it.
          *
-         *     Today nine networks answer `comments: true`: Facebook, Instagram, LinkedIn, X, YouTube, Google Business, Bluesky, Discord and Telegram. TikTok and WhatsApp answer `false`, for reasons of theirs and not ours.
+         *     Today ten networks answer `comments: true`: Facebook, Instagram, Threads, LinkedIn, X, YouTube, Google Business, Bluesky, Discord and Telegram. TikTok and WhatsApp answer `false`, for reasons of theirs and not ours.
          *
          *     A `true` here is about the **network**, not about one account of it: a Telegram channel with no linked discussion group answers 965 on its comments even though the network has them.
          *
@@ -2387,6 +2387,7 @@ export interface paths {
          *     | `bluesky` | yes | yes — through the post's `threadgate` | yes | **no** — the reply lives in somebody else's repository |
          *     | `discord` | yes | **no** — Discord has no hide, only delete | yes | yes |
          *     | `telegram` | yes | **no** — Telegram has no hide either | yes | yes — with the bot as an admin of the discussion group, otherwise error 969 |
+         *     | `threads` | yes | yes | yes | **no** — deleting somebody else's reply is not a permission you lack, it is a call that does not exist in the API |
          *     | `tiktok`, `whatsapp` | no | no | no | no |
          *
          *     Only needs authentication.
@@ -2580,7 +2581,7 @@ export interface components {
         /**
          * @description **How** an account of this network is authorized, which is not always "send the user to this URL".
          *
-         *     Nine of the eleven networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
+         *     Ten of the twelve networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
          *
          *     • **WhatsApp.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.
          *     • **Telegram.** There is no OAuth here: no consent screen, no `code`, no account token. `link` opens a private chat with the PlanVortex bot, the person then adds that bot to their channel, and **the account is created from that event**, not from any request of yours. Which means the connection cannot be finished by calling `GET /organizations/{id_organization}/account-connect/telegram` — see that endpoint.
@@ -3040,7 +3041,7 @@ export interface components {
         };
         CatalogSocialLimits: {
             /**
-             * @description Maximum length of a publication's text. Bluesky counts graphemes, everyone else counts characters — Telegram included, where `String.length` is exactly the right unit.
+             * @description Maximum length of a publication's text. **Bluesky and Threads count GRAPHEMES**, everyone else counts characters — Telegram included, where `String.length` is exactly the right unit. The difference is not academic: an emoji is one grapheme and two `String.length` units, so counting a Threads post with `.length` rejects at 250 emojis what the network publishes happily at 500.
              *
              *     On Telegram there are **two numbers for the same field**: `telegram` (4.096) while the publication is text only, and `telegram_media` (1.024) the moment it carries an image or a video, because then the text is a media caption and not a message. Switch the counter when the file is attached, not when publish is pressed.
              */
@@ -3284,7 +3285,7 @@ export interface components {
          * @description A network that has comments. Treat it as an open list: a new one is added before your integration hears about it.
          * @enum {string}
          */
-        CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram";
+        CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads";
         /** @description A live read: asked of the network and reconciled with what was stored. */
         CommentsCommentThread: {
             comments: components["schemas"]["CommentsComment"][];
@@ -4187,7 +4188,7 @@ export interface components {
              *     Not every connectable network publishes — a local business listing receives reviews, not posts — so this list is shorter than the one in `GET /social_networks`. Ask `GET /allowed_social_publications` rather than hardcoding it, because it grows.
              * @enum {string}
              */
-            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram";
+            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram" | "threads";
             /**
              * @description Send `draft` to store the publication without publishing it. If omitted, the state is resolved automatically: `ready` when everything validates, `withErrors` otherwise. Forcing `sended` marks it as published without actually sending it.
              * @enum {string}
@@ -4299,6 +4300,8 @@ export interface components {
          *
          *     On `bluesky` there are no impressions and no reach either — only the public counters — so engagement is computed over followers.
          *
+         *     On `threads` there are six, and the one that matters is `views`: it is the only one of the four newest networks with something like impressions, so its engagement rate is computed over a real base and not over followers. Sharing arrives split in three — `reposts`, `quotes` and `shares` (outside Threads) — and the three are added into one figure, the same criterion as on X; the breakdown stays in `raw`. A reply is what every other network calls a comment.
+         *
          *     On `telegram` there are two as well, and **neither of them is asked for**: the Bot API has no method that returns a message's metrics, so `reactions` arrives on its own through the bot and `comments` is counted in PlanVortex's own inbox. There are no impressions, no reach, no views and no forwards to be had anywhere in it, so engagement is computed over followers.
          */
         PublicationStats: {
@@ -4384,7 +4387,7 @@ export interface components {
          *     **This list grows.** Treat it as an open enumeration: a client that rejects an unknown value breaks the day a network is added, which happens several times a year. Not every network does everything — ask `GET /social_capabilities`.
          * @enum {string}
          */
-        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram";
+        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads";
         /** @description Statistics collection settings. Only `auto_refresh_twitter` is read; any other key is ignored. */
         StatsSettings: {
             /**
@@ -10888,7 +10891,8 @@ export interface operations {
                      *       "google_business",
                      *       "bluesky",
                      *       "discord",
-                     *       "telegram"
+                     *       "telegram",
+                     *       "threads"
                      *     ]
                      */
                     "application/json": components["schemas"]["SocialNetwork"][];

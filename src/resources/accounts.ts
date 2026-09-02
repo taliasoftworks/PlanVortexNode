@@ -90,7 +90,7 @@ export class AccountsResource extends Resource {
      * no un fallo: es lo que pasa con Discord en una organización que todavía no ha guardado sus
      * propias credenciales de bot.
      *
-     * **MIRA `authorization`, NO si `link` está vacío.** Nueve de las once redes son `redirect` y se
+     * **MIRA `authorization`, NO si `link` está vacío.** Diez de las doce redes son `redirect` y se
      * manda a la persona a `link`. Las otras dos no, y ninguna de las dos falla de forma visible si
      * se recorre la lista redirigiendo a `link`:
      *
