@@ -227,6 +227,19 @@ export type PlannerTemplateFieldType = OpenEnum<NonNullable<PlannerTemplateField
 export type PlanData = Schemas["PlanData"];
 
 /**
+ * Lo que se esta CONSUMIENDO ahora mismo: un {@link PlanData} mas `publications`.
+ *
+ * `publications` es una METRICA, no un cupo —las publicaciones son ilimitadas en todos los
+ * planes—, asi que no hay ningun limite contra el que compararla: no la pintes como una barra.
+ * Lo que frena al que publica de mas es el RITMO (tope por hora y cuenta, y tope diario por red,
+ * los dos en `GET /social_limits`), no el plan.
+ *
+ * No confundir con {@link PlanUse}, que es el bloque entero del panel: consumo, repartido y
+ * limites juntos.
+ */
+export type PlanUseData = Schemas["PlanUseData"];
+
+/**
  * La SUSCRIPCION de un cliente, que no es lo mismo que los recursos que da: los numeros estan en
  * `plan_data`. Leer `plan_identifier` para saber los limites es el error clasico — un plan
  * `custom` los lleva propios.

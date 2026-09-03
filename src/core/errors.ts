@@ -22,15 +22,22 @@ export type PlanVortexErrorRange = {
 };
 
 export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
-    { from: 500, to: 544, family: "auth" },
+    //Hasta 546, no 544: la API publica se abrio a todos los planes y trajo dos codigos nuevos
+    //—545 (ritmo por plan, que sale 429) y 546 (correo sin verificar al crear una app)—.
+    { from: 500, to: 546, family: "auth" },
     { from: 601, to: 612, family: "user" },
     { from: 700, to: 715, family: "account" },
     { from: 800, to: 810, family: "file" },
-    { from: 900, to: 960, family: "publication" },
+    //El techo sube con el catalogo del servidor, y subir tarde no da un error: da un consejo
+    //equivocado. Los codigos de Bluesky, Discord, Telegram y Threads (961-977) y los dos frenos
+    //de ritmo de la fase de publicaciones ilimitadas (978, 979) nacieron por encima de 960 y
+    //caian fuera de toda familia.
+    { from: 900, to: 979, family: "publication" },
     { from: 1000, to: 1003, family: "general" },
     { from: 1100, to: 1111, family: "organization" },
     { from: 1200, to: 1207, family: "role" },
-    { from: 1300, to: 1307, family: "plan_limit" },
+    //1308 es el tope de APPS del plan, que nacio al quitar el candado de precio de la API.
+    { from: 1300, to: 1308, family: "plan_limit" },
     { from: 1400, to: 1408, family: "plan_limit" },
     { from: 1500, to: 1512, family: "messaging" },
     { from: 1600, to: 1601, family: "contact" },
@@ -109,7 +116,7 @@ export class PlanVortexError extends Error {
     }
 }
 
-/** 500-544 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
+/** 500-546 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
 export class AuthError extends PlanVortexError {}
 /** 601-612 — el usuario final. */
 export class UserError extends PlanVortexError {}
@@ -117,12 +124,13 @@ export class UserError extends PlanVortexError {}
 export class AccountError extends PlanVortexError {}
 /** 800-810 — ficheros: formato no admitido, demasiado grande, conversión fallida. */
 export class FileError extends PlanVortexError {}
-/** 900-960 — publicaciones, incluidos los límites por red (caracteres, imágenes, duración). */
+/** 900-979 — publicaciones, incluidos los límites por red (caracteres, imágenes, duración) y los
+ * dos frenos de ritmo: 978 (demasiado rápido en esta cuenta) y 979 (tope diario de esa red). */
 export class PublicationError extends PlanVortexError {}
 /** 1100-1111 — organizaciones, y el token temporal atado a una sola de ellas (1101). */
 export class OrganizationError extends PlanVortexError {}
 /**
- * 1300-1307 y 1400-1408 — el cupo del plan, del cliente o de la organización.
+ * 1300-1308 y 1400-1408 — el cupo del plan, del cliente o de la organización.
  *
  * Es el error que un integrador **sí** quiere distinguir: no se arregla reintentando, se arregla
  * cambiando de plan. Por eso los dos rangos comparten clase.

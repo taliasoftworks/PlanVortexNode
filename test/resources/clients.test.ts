@@ -9,7 +9,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { ContractHarness } from "../helpers/contract.js";
-import { CLIENT_ID, ORG_ID, organization, planData } from "../helpers/fixtures.js";
+import { CLIENT_ID, ORG_ID, organization, planData, planUseData } from "../helpers/fixtures.js";
 
 const api = new ContractHarness();
 beforeAll(() => api.listen());
@@ -60,7 +60,7 @@ describe("clients", () => {
 
     it("sólo manda `getUse` cuando se pide", async () => {
         const calls = api.mock("get", `/clients/${CLIENT_ID}`, {
-            client: { ...client, actual_use: planData, actual_asigned: planData },
+            client: { ...client, actual_use: planUseData, actual_asigned: planData },
         });
         const pv = api.client();
 
@@ -82,11 +82,11 @@ describe("clients", () => {
         await pv.clients.organizations(CLIENT_ID, { name: "nord" });
         const created = await pv.clients.createOrganization(CLIENT_ID, {
             name: "Nordwind",
-            actual_plan: { accounts: 2, publications: 50 },
+            actual_plan: { accounts: 2, users: 3 },
         });
 
         expect(list[0]?.query).toEqual({ name: ["nord"] });
-        expect(create[0]?.body).toEqual({ name: "Nordwind", actual_plan: { accounts: 2, publications: 50 } });
+        expect(create[0]?.body).toEqual({ name: "Nordwind", actual_plan: { accounts: 2, users: 3 } });
         expect(created._id).toBe(ORG_ID);
     });
 });
@@ -106,15 +106,16 @@ describe("organizations", () => {
 
     it("lee la ficha y el consumo por la misma ruta", async () => {
         const calls = api.mock("get", `/organizations/${ORG_ID}`, {
-            organization: { ...organization, actual_use: planData, actual_asigned: planData },
+            organization: { ...organization, actual_use: planUseData, actual_asigned: planData },
         });
         const pv = api.client();
 
         const use = await pv.organizations.use(ORG_ID);
 
         expect(calls[0]?.query).toEqual({ getUse: ["true"] });
+        //`publications` sólo existe en el consumo: lo repartido a las hijas no lo lleva.
         expect(use.actual_use?.publications).toBe(200);
-        expect(use.actual_asigned?.publications).toBe(200);
+        expect(use.actual_asigned?.accounts).toBe(4);
     });
 
     it("lista y crea organizaciones hijas", async () => {

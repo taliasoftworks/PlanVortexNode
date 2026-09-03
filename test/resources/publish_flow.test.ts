@@ -76,9 +76,12 @@ describe("de las credenciales a la publicación programada", () => {
 
         const limits = await pv.organizations.limits(org._id);
         const { actual_use } = await pv.organizations.use(org._id);
-        expect({ used: actual_use?.publications, allowed: limits.publications }).toEqual({
+        //Las publicaciones son ilimitadas: el consumo se lee, pero no hay `limits.publications`
+        //contra el que compararlo. Lo que sí tiene techo, y es lo que este flujo mira, son las
+        //cuentas.
+        expect({ used: actual_use?.publications, accounts: limits.accounts }).toEqual({
             used: 12,
-            allowed: 200,
+            accounts: 4,
         });
 
         const { data: accounts } = await pv.accounts.list(org._id, { capability: "publications" });

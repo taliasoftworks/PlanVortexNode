@@ -17,7 +17,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { ContractHarness } from "../helpers/contract.js";
-import { ACCOUNT_ID, ORG_ID, PUBLICATION_ID, listedPublication, planData } from "../helpers/fixtures.js";
+import {
+    ACCOUNT_ID,
+    ORG_ID,
+    PUBLICATION_ID,
+    listedPublication,
+    planData,
+    planUseData,
+} from "../helpers/fixtures.js";
 
 const api = new ContractHarness();
 beforeAll(() => api.listen());
@@ -53,7 +60,7 @@ describe("dashboard.summary", () => {
                 by_day: [],
                 published_by_day: [],
             },
-            plan_use: { actual_use: planData, actual_asigned: planData, limits: planData },
+            plan_use: { actual_use: planUseData, actual_asigned: planData, limits: planData },
         });
         const pv = api.client();
 
@@ -226,7 +233,7 @@ describe("dashboard.publicationStats", () => {
 describe("dashboard.use", () => {
     it("devuelve consumo, reparto y límites en una sola llamada", async () => {
         api.mock("get", `/organizations/${ORG_ID}/use`, {
-            actual_use: planData,
+            actual_use: planUseData,
             actual_asigned: planData,
             limits: planData,
         });

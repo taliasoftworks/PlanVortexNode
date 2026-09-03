@@ -246,6 +246,7 @@ export type {
     PlannerTemplateFieldType,
     PlannerTemplateName,
     PlanUse,
+    PlanUseData,
     Product,
     ProductCatalog,
     ProductCatalogInput,

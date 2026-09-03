@@ -16,6 +16,7 @@ import type {
     Organization,
     Paginated,
     PlanData,
+    PlanUseData,
     SocialCredentialsInput,
     SocialNetwork,
 } from "../types.js";
@@ -151,7 +152,7 @@ export class OrganizationsResource extends Resource {
     async use(
         idOrganization: string,
         options: RequestOptions = {},
-    ): Promise<{ actual_use: PlanData | undefined; actual_asigned: PlanData | undefined }> {
+    ): Promise<{ actual_use: PlanUseData | undefined; actual_asigned: PlanData | undefined }> {
         const organization = await this.get(idOrganization, { ...options, getUse: true });
         return { actual_use: organization.actual_use, actual_asigned: organization.actual_asigned };
     }

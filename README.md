@@ -368,15 +368,15 @@ if you would rather branch on `error.family`.
 
 | Codes                | What went wrong                                        | Class               |
 | -------------------- | ------------------------------------------------------ | ------------------- |
-| 500-542              | Authentication, tokens, permissions, client apps       | `AuthError`         |
+| 500-546              | Authentication, tokens, permissions, client apps       | `AuthError`         |
 | 601-612              | Users                                                  | `UserError`         |
 | 700-715              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
 | 800-810              | Files                                                  | `FileError`         |
-| 900-960              | Publications, including every per-network limit        | `PublicationError`  |
+| 900-979              | Publications, every per-network limit and the two rate brakes | `PublicationError`  |
 | 1000-1003            | General                                                | `PlanVortexError`   |
 | 1100-1111            | Organizations                                          | `OrganizationError` |
 | 1200-1207            | Roles                                                  | `PlanVortexError`   |
-| 1300-1307, 1400-1408 | Plan quota exhausted, at client and organization level | `PlanLimitError`    |
+| 1300-1308, 1400-1408 | Plan quota exhausted, at client and organization level | `PlanLimitError`    |
 | 1500-1512            | Messaging                                              | `MessagingError`    |
 | 1600-1601            | Contacts                                               | `ContactError`      |
 | 1900-1906            | Payments                                               | `PlanVortexError`   |

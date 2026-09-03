@@ -86,7 +86,6 @@ export const organization: Organization = {
 
 export const planData = {
     accounts: 4,
-    publications: 200,
     users: 3,
     space: 5,
     integrations: 1,
@@ -95,6 +94,17 @@ export const planData = {
     artificial_inteligence: true,
     whatsapp: false,
     stats: true,
+};
+
+/**
+ * El CONSUMO, que no es el plan: lo mismo mas `publications`.
+ *
+ * Las publicaciones son ilimitadas desde la fase 1, asi que el numero existe pero no tiene
+ * techo contra el que compararse: viaja en `actual_use` y nunca en `limits`.
+ */
+export const planUseData = {
+    ...planData,
+    publications: 200,
 };
 
 /**

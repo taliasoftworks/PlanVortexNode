@@ -3098,7 +3098,7 @@ export interface components {
             actual_asigned?: components["schemas"]["PlanData"];
             actual_plan: components["schemas"]["ClientsPlan"];
             /** @description Current consumption across every organization of the client. **Only present with `getUse=true`.** `twitter_credits` and `ai_credits` are what has been spent this calendar month. */
-            actual_use?: components["schemas"]["PlanData"];
+            actual_use?: components["schemas"]["PlanUseData"];
             /** @description Read-only view of the client's own AI provider configuration (BYOK). Written via `PUT /clients/{id_client}/ai-settings`. API keys are stored encrypted and are NEVER returned: each scope only exposes provider, model and has_api_key. */
             ai_settings?: components["schemas"]["ClientsAiSettings"];
             /** @enum {string} */
@@ -3576,7 +3576,7 @@ export interface components {
             /** @description What has been handed down to child organizations out of this organization's plan. */
             actual_asigned: components["schemas"]["PlanData"];
             /** @description What the organization and its children are consuming right now. */
-            actual_use: components["schemas"]["PlanData"];
+            actual_use: components["schemas"]["PlanUseData"];
             /** @description The plan in force. An organization with no plan of its own inherits the closest parent that has one. */
             limits: components["schemas"]["PlanData"];
         };
@@ -3645,7 +3645,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-544 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-960 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1307 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
+            /** @description PlanVortex error code. Ranges: 500-546 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-979 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -3909,7 +3909,7 @@ export interface components {
             /** @description The slice of the client's plan assigned to this organization. **Absent when nothing was assigned**, and then the organization shares whatever its nearest parent with a plan has — or, failing that, the client's unassigned remainder. Ask `GET /organizations/{id_organization}/limits` for the effective numbers instead of reading this. */
             actual_plan?: components["schemas"]["PlanData"];
             /** @description Current consumption. **Only present with `getUse=true`.** `twitter_credits` and `ai_credits` are what has been spent in the current calendar month; the rest is what exists right now. */
-            actual_use?: components["schemas"]["PlanData"];
+            actual_use?: components["schemas"]["PlanUseData"];
             ai_context?: components["schemas"]["AiContext"];
             /** Format: date-time */
             creation_date: string;
@@ -4036,12 +4036,12 @@ export interface components {
             accounts: number;
             /** @description Monthly AI credits (1 credit = $0.001 of provider cost): 15 per plan orchestration pass, 2 per generated text, 70 per generated image. Resets monthly and does not roll over. A client using its own provider key (BYOK) does not consume them in that scope. */
             ai_credits?: number;
+            /** @description Apps this plan allows: 1 on Free, 2 on Basic, 5 on Pro, 10 on Custom. Each one is a `client_id` with a secret, so each one is a key to the whole public API — which every plan has, Free included. Unlike accounts, users or storage this is NOT split between organizations: an app belongs to the client. On a use payload it is how many exist right now. */
+            apps?: number;
             /** @description Whether AI generation is enabled. */
             artificial_inteligence?: boolean;
-            /** @description Connections to a third-party tool material is pulled from (Google Drive, an RSS feed). Not the same thing as an app: an app is API access, and it is a Custom-plan feature of its own. */
+            /** @description Connections to a third-party tool material is pulled from (Google Drive, an RSS feed). Not the same thing as an app: an app is API access, and it has its own allowance in `apps`. */
             integrations: number;
-            /** @description Publications that may be sent per month. */
-            publications: number;
             /** @description Storage, in GB. */
             space: number;
             /** @description Whether statistics collection is enabled. */
@@ -4053,6 +4053,11 @@ export interface components {
             /** @description Whether WhatsApp may be connected. */
             whatsapp?: boolean;
         };
+        /** @description What is being consumed right now. Same shape as PlanData plus `publications`, which is counted but neither charged nor split between organizations. */
+        PlanUseData: {
+            /** @description Publications created in the current calendar month. A METRIC, not a quota: publications are unlimited on every plan, so there is no limit to compare it against. What throttles publishing is rate, not plan — see the per-hour and per-network daily caps. */
+            publications?: number;
+        } & components["schemas"]["PlanData"];
         /** @description A product as the network returns it. `id` is always present here. */
         ProductsProduct: components["schemas"]["ProductsProductInput"];
         /** @description A Meta commerce catalogue, as the network returns it. */

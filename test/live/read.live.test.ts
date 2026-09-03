@@ -63,10 +63,13 @@ describeLive("lecturas", () => {
         //`undefined` en cuanto la organización hereda del padre.
         const limits = await live.pv.organizations.limits(live.organization._id);
         expect(typeof limits.accounts).toBe("number");
-        expect(typeof limits.publications).toBe("number");
 
+        //`publications` NO está en `limits`: son ilimitadas y lo que existe es una métrica del
+        //consumo. Si algún día vuelve a aparecer ahí, es que el servidor está sirviendo un plan
+        //heredado sin limpiar.
         const { actual_use } = await live.pv.organizations.use(live.organization._id);
         expect(actual_use).toBeDefined();
+        expect(typeof actual_use?.publications).toBe("number");
 
         expectPage(await live.pv.organizations.children(live.organization._id, { limit: 5 }), "children");
     });

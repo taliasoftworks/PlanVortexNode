@@ -39,11 +39,14 @@ async function main(): Promise<void> {
 
     // 2. Cuánto queda de plan. Se lee de `limits`, no de `organization.actual_plan`, que falta
     //    cuando la organización no tiene plan propio y hereda el del padre.
+    //
+    //    Ojo con `publications`: NO está en `limits`. Es una métrica del consumo —son ilimitadas
+    //    en todos los planes— y lo que frena al que publica de más es el ritmo, no el plan.
     const limits = await pv.organizations.limits(organization._id);
     const { actual_use } = await pv.organizations.use(organization._id);
     console.log(
-        `Publicaciones: ${actual_use?.publications ?? 0} de ${limits.publications} · ` +
-            `Cuentas: ${actual_use?.accounts ?? 0} de ${limits.accounts}`,
+        `Cuentas: ${actual_use?.accounts ?? 0} de ${limits.accounts} · ` +
+            `Publicaciones este mes: ${actual_use?.publications ?? 0} (sin tope de plan)`,
     );
 
     // 3. Una cuenta con la que se pueda publicar. El filtro `capability` lo resuelve el servidor

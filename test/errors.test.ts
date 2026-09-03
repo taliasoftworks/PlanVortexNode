@@ -38,6 +38,31 @@ describe("la clasificacion de errores", () => {
     });
 
     /**
+     * El rango de publicaciones llega hasta 979, no hasta 960. Los codigos por encima del 960 no
+     * son ninguna rareza: son las cuatro redes ultimas (Bluesky, Discord, Telegram y Threads) y
+     * los DOS FRENOS DE RITMO que sustituyeron al cupo mensual. Fuera de familia, el 978 llegaba
+     * como un error generico y quien lo recibia no tenia forma de saber que la respuesta es
+     * esperar.
+     */
+    it("clasifica los frenos de ritmo como publicacion, no como desconocidos", () => {
+        expect(apiError(978)).toBeInstanceOf(PublicationError);
+        expect(apiError(979)).toBeInstanceOf(PublicationError);
+        expect(errorFamilyForCode(978)).toBe("publication");
+        expect(errorFamilyForCode(975)).toBe("publication");
+    });
+
+    /**
+     * Los tres codigos que trajo abrir la API publica a todos los planes, y los tres nacieron por
+     * encima del techo de su rango: 545 (ritmo por plan, que sale 429), 546 (correo sin verificar
+     * al crear una app) y 1308 (cuantas apps caben en el plan).
+     */
+    it("clasifica los codigos de la API abierta", () => {
+        expect(apiError(545)).toBeInstanceOf(AuthError);
+        expect(apiError(546)).toBeInstanceOf(AuthError);
+        expect(apiError(1308)).toBeInstanceOf(PlanLimitError);
+    });
+
+    /**
      * El catalogo del servidor crece cada mes. Un codigo que esta libreria no conoce NO puede
      * romper: sale como base, con su code y su message intactos.
      */

@@ -3,6 +3,48 @@
 Breaking changes, version by version, with what to do about each. A release note scrolls away; this
 does not.
 
+## 0.7.0 → 0.8.0
+
+One field disappeared from a public type and three error families grew. Nothing changed on the wire:
+the server stopped charging for publications on 02-09-2026 and opened the public API to every plan,
+and this release is the types catching up with both.
+
+### `PlanData.publications` is gone
+
+**Publications are unlimited on every plan**, so there is no quota to describe. The count itself did
+not disappear — it moved to the new `PlanUseData`, which is what `actual_use` has always been in
+practice: a plan plus `publications`.
+
+```ts
+const use = await pv.organizations.use(idOrganization);
+
+use.limits.publications;      // ✗ no longer compiles — and already returned undefined
+use.actual_use.publications;  // ✓ PlanUseData: the month's count, with no ceiling to compare it to
+```
+
+**What to do:** if you drew a progress bar for publications, delete it — there is no denominator.
+Print the count on its own. What throttles publishing is **rate**, not the plan: a per-hour cap per
+account and a per-network daily cap, both in `GET /social_limits`, surfacing as errors 978 and 979.
+
+This is the one edit the compiler will not make for you, and the reason it is worth a section: the
+field kept type-checking while it returned `undefined` at runtime, so `12 / undefined` rendered as a
+bar at zero and nobody noticed.
+
+### `PLANVORTEX_ERROR_RANGES`: three families are wider
+
+| Family | Was | Now | What was falling through |
+|---|---|---|---|
+| `publication` | 900-960 | **900-979** | Bluesky, Discord, Telegram and Threads (961-977), plus the two rate brakes, **978** and **979** |
+| `auth` | 500-544 | **500-546** | **545** (the plan's API rate limit, a `429` with `Retry-After`) and **546** (unverified email when creating an app) |
+| `plan_limit` | 1300-1307 | **1300-1308** | **1308** (no more apps fit in this plan) |
+
+Everything above each old ceiling was arriving as a bare `PlanVortexError`, so this only ever adds
+to what a `catch` sees.
+
+**What to do:** nothing, if you import the table. If you copied it, copy it again. And if you catch
+`PublicationError` to decide whether to retry, look at the code: **978 and 979 are transient** —
+waiting fixes them — while the rest of that family is not.
+
 ## 0.1.0 → 0.2.0
 
 Nothing in the client's shape changed: no method signature moved, no export disappeared. What
