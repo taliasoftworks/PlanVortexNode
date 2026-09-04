@@ -752,6 +752,8 @@ export interface paths {
          *     **A temporal connect token is spent here.** Once this call succeeds, that token cannot connect anything else and answers error 543; the `enable` calls that finish the same connection still work until it expires. And if the token was issued for one network, calling this for another answers error 544.
          *
          *     **Telegram does not come through here, and cannot be made to.** That network has no callback: the account is created by PlanVortex when the bot is added to a channel, and what authorizes it is a single-use voucher minted at that moment and spent in the same breath — it never leaves the server, so calling this endpoint for `telegram` answers error 700. It is deliberate: the bot is shared, so without it anyone could hang any channel where that bot is an admin off their own organization by passing a chat id by hand. What an integration listens for instead is the `new_account` webhook notification.
+         *
+         *     **And a Telegram account arrives already active.** In the other eleven networks this endpoint hands you accounts that are still off, and you pick which ones spend a plan slot with `POST .../accounts/{id_account}/enable`. Here there is nothing to call: one channel arrives — the one the person picked in Telegram — and PlanVortex takes the slot for it right then. If the plan has no free slot the account is still created, off, and the person is told so in the bot chat; `GET /organizations/{id_organization}/accounts` will not list it, because that listing only returns active accounts, but naming it in the `accounts` filter does return it.
          */
         get: operations["connectAccount"];
         put?: never;
@@ -896,6 +898,8 @@ export interface paths {
          * @description Brings back an account that was removed, without going through the authorization again — as long as its stored token still works.
          *
          *     It takes a **slot of the plan**, so it fails with error 706 when the organization is already at its account limit. It also turns the network's webhooks back on, on any plan but the free one.
+         *
+         *     **On `telegram` you normally never call this.** That network's accounts are born active — there is no authorization return in which to choose them, so PlanVortex takes the slot when the bot is added to the channel. The one case left is a channel that arrived while the plan was full: it stays off until a slot frees up, and this is what turns it on.
          */
         post: operations["enableAccount"];
         delete?: never;

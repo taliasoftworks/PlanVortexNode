@@ -1,6 +1,6 @@
 {
   "name": "planvortex",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Official Node.js client for the PlanVortex API: connect social accounts, schedule and publish posts, read comments and messages, and verify webhooks.",
   "keywords": [
     "planvortex",

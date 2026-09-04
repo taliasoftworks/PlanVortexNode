@@ -4,6 +4,34 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-04
+
+**Users are unlimited on every plan**, so the quota that said otherwise is gone from the types —
+the same correction 0.8.0 made for publications, one axis later.
+
+It is the second half of a change the server made on 03-09-2026: users stopped being something a
+plan grants and became something you simply count. `PlanData.users` was **required**, so every
+plan literal had to supply a number that meant nothing, and the compiler kept asking for it. This
+package's own test suite was doing exactly that, which is how the drift surfaced.
+
+### Changed
+
+- **BREAKING (types only): `PlanData.users` no longer exists.** The count moved to
+  `PlanUseData` as an optional metric — how many users have access right now, with no limit to
+  compare it against, because there is none. Nothing changes on the wire.
+- **The `/apps` operations no longer claim the Custom plan.** Six of them still carried
+  «It also needs the **Custom plan** (`ERROR_CODE_542`)» in their documentation. That stopped
+  being true on 02-09-2026, and 0.8.0 announced the opening in this very file while shipping types
+  that said the opposite: the changelog was rebuilt, the committed copy of the spec was not. It is
+  now, so the published documentation and the published types finally agree.
+
+### Removed
+
+- **`PlanData.artificial_inteligence`, `PlanData.stats` and `PlanData.whatsapp`.** Three
+  optional booleans describing a plan model that no longer exists — AI, statistics and WhatsApp are
+  not per-plan switches. They were never sent by the current API, so reading them returned
+  `undefined` while the compiler presented them as real.
+
 ## [0.8.0] - 2026-09-03
 
 **Publications are unlimited on every plan**, so the quota that said otherwise is gone from the
