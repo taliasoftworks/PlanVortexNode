@@ -172,7 +172,7 @@ export interface paths {
         get?: never;
         /**
          * Configure the client's own AI models (BYOK)
-         * @description Set the client's Bring-Your-Own-Key AI provider configuration per scope. The request body is an object keyed by scope (orchestrator, text, image); a scope set to null clears it. Providers and capabilities are validated against a fixed catalogue. When a scope uses BYOK, its calls are billed to the client's own provider and do NOT consume PlanVortex AI credits, but the artificial_inteligence plan flag is still required to use the feature. API keys are stored encrypted and never returned; the response client only exposes provider, model and has_api_key per scope. Requires the client:update permission.
+         * @description Set the client's Bring-Your-Own-Key AI provider configuration per scope. The request body is an object keyed by scope (orchestrator, text, image); a scope set to null clears it. Providers and capabilities are validated against a fixed catalogue. When a scope uses BYOK, its calls are billed to the client's own provider and do NOT consume PlanVortex AI credits, but the plan still has to include AI credits to use the feature. API keys are stored encrypted and never returned; the response client only exposes provider, model and has_api_key per scope. Requires the client:update permission.
          */
         put: operations["updateAiSettings"];
         post?: never;
@@ -193,7 +193,7 @@ export interface paths {
          * List the client's apps
          * @description The apps of a client. Secrets never travel here: to read one, ask for it explicitly with the `secret` endpoint.
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. **No plan is required**: apps are on all four plans, the free one included — what the plan decides is how many you can hold at once and how fast you can call.
          */
         get: operations["getClientApps"];
         put?: never;
@@ -201,15 +201,15 @@ export interface paths {
          * Create an app
          * @description Creates the app and its credentials.
          *
-         *     **A client can have one app.** Creating a second answers error 536. If you need to rotate credentials, update the existing app rather than creating another.
+         *     **How many apps fit is decided by the plan**, not by a fixed limit of one: 1 on free, 2 on basic, 5 on pro and 10 on custom. Going over answers `ERROR_CODE_1308`, which carries `limit` and `used` in its `data`. Deleting an app frees its slot immediately, because only live apps count. If you just need to rotate credentials, update the existing app rather than creating another.
+         *
+         *     **The user's email must be verified** (`ERROR_CODE_546`). This is the only route in `/apps` that asks for it: an app is a key to the whole public API, and this is what stops a throwaway address from minting them in bulk. Reading, updating and deleting an app you already own do not check it.
          *
          *     Every URL is validated: a bad entry in `allowed_domains` answers 531, in `redirect_urls` 532, and a bad `webhook_url` answers 535.
          *
          *     **The secret is not in the response.** Read it with `GET /clients/{id_client}/apps/{id_app}/secret`.
          *
-         *     **A client can only have ONE app.** Creating a second one is rejected with `ERROR_CODE_536`: delete or update the one that exists. The listing is paginated because every listing in this API is, not because there can be more than one.
-         *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. **No plan is required**: apps are on all four plans, the free one included — what the plan decides is how many you can hold at once and how fast you can call.
          */
         post: operations["createClientApp"];
         delete?: never;
@@ -229,7 +229,7 @@ export interface paths {
          * Get one app
          * @description The app's record, without its secret. Note the envelope: `{client_app}` here, `{client_apps, total}` in the list.
          *
-         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. The **Custom plan** is still required (`ERROR_CODE_542`).
+         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. **No plan is required**: apps are on all four plans, the free one included.
          */
         get: operations["getClientApp"];
         /**
@@ -240,7 +240,7 @@ export interface paths {
          *
          *     **It replaces every field with what the body carries.** `name`, `keycloak_client_idenfifier`, `allowed_domains`, `redirect_urls` and `webhook_url` are all written as sent, so omitting one erases it — sending an update without `webhook_url` turns the webhook off. Read the app first and send it back whole.
          *
-         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. The **Custom plan** is still required (`ERROR_CODE_542`).
+         *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. **No plan is required**: apps are on all four plans, the free one included.
          */
         put: operations["updateClientApp"];
         post?: never;
@@ -248,7 +248,7 @@ export interface paths {
          * Delete an app
          * @description Revokes the credentials and marks the app as deleted. **Tokens already issued stop working**: the token endpoint checks that the app still exists before answering, and requests carrying an old token no longer resolve to an app.
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. **No plan is required**: apps are on all four plans, the free one included — what the plan decides is how many you can hold at once and how fast you can call.
          */
         delete: operations["deleteClientApp"];
         options?: never;
@@ -269,7 +269,7 @@ export interface paths {
          *
          *     The same secret is what signs the outgoing webhooks (`x-hub-signature`, `x-hub-signature-256`).
          *
-         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. It also needs the **Custom plan** (`ERROR_CODE_542`): apps are what that plan adds, and they are the door to this whole API.
+         *     **Needs a USER token, not an app token.** With client credentials it answers `ERROR_CODE_512`. **No plan is required**: apps are on all four plans, the free one included — what the plan decides is how many you can hold at once and how fast you can call.
          *
          *     It comes straight from Keycloak, so it is the live secret and not a copy: treat the response as a credential and never log it.
          */
@@ -351,7 +351,7 @@ export interface paths {
         put?: never;
         /**
          * Create an AI publication plan
-         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (artificial_inteligence), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117).
+         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (it contracts AI credits; Free does not), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117).
          */
         post: operations["addAiPlan"];
         delete?: never;
@@ -4030,33 +4030,31 @@ export interface components {
             total?: number;
             users?: components["schemas"]["OrganizationsUser"][];
         };
-        /** @description The resources a plan grants. On a client it is what was contracted; on an organization, the slice of it that was assigned. The sum across all the organizations of a client can never exceed what the client has contracted. */
+        /**
+         * @description The resources a plan grants. On a client it is what was contracted; on an organization, the slice of it that was assigned. The sum across all the organizations of a client can never exceed what the client has contracted.
+         *
+         *     Users are NOT here: every plan has unlimited users, so they are neither charged nor split between organizations. They are still counted, in `PlanUseData.users`. There are no `artificial_inteligence`, `whatsapp` or `stats` flags either: statistics and WhatsApp are on every plan, and what gates AI is `ai_credits` — a plan with credits has AI, and Free has zero.
+         */
         PlanData: {
             /** @description Social accounts that may be connected. */
             accounts: number;
             /** @description Monthly AI credits (1 credit = $0.001 of provider cost): 15 per plan orchestration pass, 2 per generated text, 70 per generated image. Resets monthly and does not roll over. A client using its own provider key (BYOK) does not consume them in that scope. */
             ai_credits?: number;
-            /** @description Apps this plan allows: 1 on Free, 2 on Basic, 5 on Pro, 10 on Custom. Each one is a `client_id` with a secret, so each one is a key to the whole public API — which every plan has, Free included. Unlike accounts, users or storage this is NOT split between organizations: an app belongs to the client. On a use payload it is how many exist right now. */
+            /** @description Apps this plan allows: 1 on Free, 2 on Basic, 5 on Pro, 10 on Custom. Each one is a `client_id` with a secret, so each one is a key to the whole public API — which every plan has, Free included. Unlike accounts or storage this is NOT split between organizations: an app belongs to the client. On a use payload it is how many exist right now. */
             apps?: number;
-            /** @description Whether AI generation is enabled. */
-            artificial_inteligence?: boolean;
             /** @description Connections to a third-party tool material is pulled from (Google Drive, an RSS feed). Not the same thing as an app: an app is API access, and it has its own allowance in `apps`. */
             integrations: number;
             /** @description Storage, in GB. */
             space: number;
-            /** @description Whether statistics collection is enabled. */
-            stats?: boolean;
             /** @description Monthly X (Twitter) credits. X bills per use: 15 per post, 200 if the text contains a link, 15 per deletion, 1 per stat read, 1 per timeline item. The pool resets on the 1st of each calendar month and does not roll over. */
             twitter_credits?: number;
-            /** @description Users with access. */
-            users: number;
-            /** @description Whether WhatsApp may be connected. */
-            whatsapp?: boolean;
         };
-        /** @description What is being consumed right now. Same shape as PlanData plus `publications`, which is counted but neither charged nor split between organizations. */
+        /** @description What is being consumed right now. Same shape as PlanData plus `publications` and `users`, which are counted but neither charged nor split between organizations. */
         PlanUseData: {
             /** @description Publications created in the current calendar month. A METRIC, not a quota: publications are unlimited on every plan, so there is no limit to compare it against. What throttles publishing is rate, not plan — see the per-hour and per-network daily caps. */
             publications?: number;
+            /** @description Users with access right now. A METRIC, not a quota: users are unlimited on every plan, so there is no limit to compare it against. */
+            users?: number;
         } & components["schemas"]["PlanData"];
         /** @description A product as the network returns it. `id` is always present here. */
         ProductsProduct: components["schemas"]["ProductsProductInput"];

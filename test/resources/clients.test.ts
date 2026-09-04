@@ -82,11 +82,11 @@ describe("clients", () => {
         await pv.clients.organizations(CLIENT_ID, { name: "nord" });
         const created = await pv.clients.createOrganization(CLIENT_ID, {
             name: "Nordwind",
-            actual_plan: { accounts: 2, users: 3 },
+            actual_plan: { accounts: 2, space: 3 },
         });
 
         expect(list[0]?.query).toEqual({ name: ["nord"] });
-        expect(create[0]?.body).toEqual({ name: "Nordwind", actual_plan: { accounts: 2, users: 3 } });
+        expect(create[0]?.body).toEqual({ name: "Nordwind", actual_plan: { accounts: 2, space: 3 } });
         expect(created._id).toBe(ORG_ID);
     });
 });
