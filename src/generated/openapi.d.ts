@@ -753,7 +753,7 @@ export interface paths {
          *
          *     **Telegram does not come through here, and cannot be made to.** That network has no callback: the account is created by PlanVortex when the bot is added to a channel, and what authorizes it is a single-use voucher minted at that moment and spent in the same breath — it never leaves the server, so calling this endpoint for `telegram` answers error 700. It is deliberate: the bot is shared, so without it anyone could hang any channel where that bot is an admin off their own organization by passing a chat id by hand. What an integration listens for instead is the `new_account` webhook notification.
          *
-         *     **And a Telegram account arrives already active.** In the other eleven networks this endpoint hands you accounts that are still off, and you pick which ones spend a plan slot with `POST .../accounts/{id_account}/enable`. Here there is nothing to call: one channel arrives — the one the person picked in Telegram — and PlanVortex takes the slot for it right then. If the plan has no free slot the account is still created, off, and the person is told so in the bot chat; `GET /organizations/{id_organization}/accounts` will not list it, because that listing only returns active accounts, but naming it in the `accounts` filter does return it.
+         *     **And a Telegram account arrives already active.** In the other twelve networks this endpoint hands you accounts that are still off, and you pick which ones spend a plan slot with `POST .../accounts/{id_account}/enable`. Here there is nothing to call: one channel arrives — the one the person picked in Telegram — and PlanVortex takes the slot for it right then. If the plan has no free slot the account is still created, off, and the person is told so in the bot chat; `GET /organizations/{id_organization}/accounts` will not list it, because that listing only returns active accounts, but naming it in the `accounts` filter does return it.
          */
         get: operations["connectAccount"];
         put?: never;
@@ -900,6 +900,8 @@ export interface paths {
          *     It takes a **slot of the plan**, so it fails with error 706 when the organization is already at its account limit. It also turns the network's webhooks back on, on any plan but the free one.
          *
          *     **On `telegram` you normally never call this.** That network's accounts are born active — there is no authorization return in which to choose them, so PlanVortex takes the slot when the bot is added to the channel. The one case left is a channel that arrived while the plan was full: it stays off until a slot frees up, and this is what turns it on.
+         *
+         *     **On `slack` this is also what puts the PlanVortex app inside the channel**, with `conversations.join`. It works on a **public** channel and it cannot work on a private one: Slack has no API for joining one. The account is enabled all the same and the connection looks healthy, and then the first publication fails with error 980 — so a private channel has to be told to the person **before** they pick it, together with the `/invite @PlanVortex` they have to run in that channel. Whether the app is inside travels in `extra_data.is_member`, and it can turn `false` later, the day somebody removes the app from an already connected channel.
          */
         post: operations["enableAccount"];
         delete?: never;
@@ -1362,7 +1364,7 @@ export interface paths {
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
          *
-         *     **Read `authorization`, not `link`.** Ten of the twelve networks are `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
+         *     **Read `authorization`, not `link`.** Eleven of the thirteen networks are `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
          *
          *     • **WhatsApp is not a URL at all.** Its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.
          *     • **Telegram has a link and still is not a redirect.** It opens a chat with the PlanVortex bot, and nobody comes back from it: the account is born minutes later, from the bot being added to a channel, and it is announced over the WebSocket. Open it in another tab and keep listening; redirect to it and there is nobody left to tell.
@@ -2506,9 +2508,9 @@ export interface components {
         /**
          * @description A social account connected to an organization.
          *
-         *     On `discord` and on `telegram` an account is a **channel**, not a profile: publishing to two Discord channels of the same server — or to two Telegram channels of the same brand — costs two accounts of the plan.
+         *     On `discord`, on `telegram` and on `slack` an account is a **channel**, not a profile: publishing to two Discord channels of the same server — or to two Telegram channels of the same brand, or to `#anuncios` and `#general` of the same Slack workspace — costs two accounts of the plan.
          *
-         *     `error_code` other than `0` means the connection is broken — an expired token, a permission taken away — and the account has to be connected again. On `telegram` nothing expires, because there is no account token: what breaks the connection is the bot being removed from the channel or losing its permission to post there (error 968).
+         *     `error_code` other than `0` means the connection is broken — an expired token, a permission taken away — and the account has to be connected again. On `telegram` nothing expires, because there is no account token: what breaks the connection is the bot being removed from the channel or losing its permission to post there (error 968). On `slack` the bot token does not expire either: what breaks it is the app being removed from the channel (error 980) or the channel being archived or deleted (error 985).
          */
         Account: {
             _id: string;
@@ -2516,7 +2518,7 @@ export interface components {
             creation_date: string;
             /** @description `0` is a healthy account. Anything else is a PlanVortex error code explaining why the connection stopped working; the account keeps its data but cannot be used until it is reconnected. */
             error_code: number;
-            /** @description Followers the network reports. Absent on an account that has never been measured. On `telegram` it is the channel's member count, and it is the **only** audience figure that network publishes: there are no views, no impressions and no reach anywhere in the Bot API. */
+            /** @description Followers the network reports. Absent on an account that has never been measured. On `telegram` and on `slack` it is the channel's member count, and it is the **only** audience figure either network publishes: there are no views, no impressions and no reach anywhere in the Bot API nor in the Slack Web API. */
             followers_count?: number;
             /** @description The client the organization hangs from. Denormalized here for the plan checks. */
             id_client: string;
@@ -2585,7 +2587,7 @@ export interface components {
         /**
          * @description **How** an account of this network is authorized, which is not always "send the user to this URL".
          *
-         *     Ten of the twelve networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
+         *     Eleven of the thirteen networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
          *
          *     • **WhatsApp.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.
          *     • **Telegram.** There is no OAuth here: no consent screen, no `code`, no account token. `link` opens a private chat with the PlanVortex bot, the person then adds that bot to their channel, and **the account is created from that event**, not from any request of yours. Which means the connection cannot be finished by calling `GET /organizations/{id_organization}/account-connect/telegram` — see that endpoint.
@@ -3052,13 +3054,21 @@ export interface components {
             characters: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Maximum length of a reply to a comment. `0` means the network has no comments. */
             comment_characters: components["schemas"]["CatalogSocialLimitsMap"];
-            /** @description Maximum size of one file, in megabytes. */
+            /**
+             * @description Maximum size of one file, in megabytes.
+             *
+             *     **On `slack` this one is a ceiling, not a promise.** 1.024 MB is what the network allows; the real limit is the lesser of that and the storage the client's own workspace plan still has, which no API exposes. A file inside this number can still come back as error 986. It is the only key in this map with that property.
+             */
             max_file_size_mb: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Second text limit, in UTF-8 bytes. `0` means the network does not measure text in bytes; only Bluesky does, at 3.000. */
             max_post_bytes: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Maximum length of the title. `0` means the network has no title field at all. */
             title_characters: components["schemas"]["CatalogSocialLimitsMap"];
-            /** @description How many images one publication accepts. `0` means images are not a publication on that network. */
+            /**
+             * @description How many images one publication accepts. `0` means images are not a publication on that network.
+             *
+             *     **On `discord`, `threads` and `slack` it counts images and videos together**, because there the carousel is one message carrying several attachments and not several publications: what is validated is the total number of files. Over it, the publication is created in state `withErrors` — on `slack` with `publication_errors[].code = 982`.
+             */
             total_images: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Maximum video duration. A network that limits weight instead of duration is not here but in `max_file_size_mb`. */
             video_duration_in_seconds: components["schemas"]["CatalogSocialLimitsMap"];
@@ -3649,7 +3659,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-546 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-979 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
+            /** @description PlanVortex error code. Ranges: 500-546 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-986 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -4175,7 +4185,11 @@ export interface components {
         };
         /** @description Body accepted when creating or updating a publication. Only these properties are read; anything else in the payload is ignored. */
         PublicationsPublicationInput: {
-            /** @description Identifiers of uploads previously created through the uploads endpoints, attached to this publication. */
+            /**
+             * @description Identifiers of uploads previously created through the uploads endpoints, attached to this publication.
+             *
+             *     **On Slack the files travel inside the message**, not as publications of their own: up to 10 attachments counting images and videos together (`publication_errors[].code = 982` over it), each one under the `max_file_size_mb.slack` ceiling (code 983), and anything the upload itself refuses comes back as code 986.
+             */
             files?: string[];
             /** @description Internal name for the publication. Useful for grouping; never shown on the social network. */
             name?: string;
@@ -4195,7 +4209,7 @@ export interface components {
              *     Not every connectable network publishes — a local business listing receives reviews, not posts — so this list is shorter than the one in `GET /social_networks`. Ask `GET /allowed_social_publications` rather than hardcoding it, because it grows.
              * @enum {string}
              */
-            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram" | "threads";
+            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram" | "threads" | "slack";
             /**
              * @description Send `draft` to store the publication without publishing it. If omitted, the state is resolved automatically: `ready` when everything validates, `withErrors` otherwise. Forcing `sended` marks it as published without actually sending it.
              * @enum {string}
@@ -4205,6 +4219,8 @@ export interface components {
              * @description Body text of the publication. Either `text` or at least one entry in `files` is required: if both are empty the publication is still created, but in state `withErrors` with `publication_errors[].code = 915`. Maximum length depends on the network. On YouTube this is the video **description** (5,000 characters), and the publication must carry exactly one video file and no images — otherwise it is created in state `withErrors` with `publication_errors[].code = 943`. For X (Twitter), a text containing a link costs 200 credits instead of 15.
              *
              *     **On Telegram the limit depends on what else the publication carries**: 4.096 characters while it is text only, and **1.024** the moment it has an image or a video, because then the text is the caption of a photo, a video or an album and no longer a message. Over the limit it is created in state `withErrors` with `publication_errors[].code = 967`, whose `data` carries `characters`, `max_characters` and `has_media`. Both numbers are published, as `characters.telegram` and `characters.telegram_media` in `GET /social_limits`.
+             *
+             *     **On Slack the limit is 4.000 characters** and it is counted over the text you send, not over what travels: `&`, `<` and `>` are escaped before publishing, so a text made of ampersands grows on the wire and is still measured here. Over the limit the publication is created in state `withErrors` with `publication_errors[].code = 981`. And because the escaped text is what is measured on the wire, a text that passed at 4.000 characters and is full of `&` is **trimmed** before going out — Slack does not reject a long `text`, it truncates it or splits it into several messages, and one publication showing up as two posts is worse. The text goes out **plain**: Slack speaks *mrkdwn* and not Markdown, and PlanVortex sends no `blocks`, so `**bold**` is published literally.
              */
             text?: string;
             /** @description Title for the publication. Only some networks use it: optional on LinkedIn, and **required on YouTube**, where it is the video title and must be 100 characters or fewer — a publication without it, or with a longer one, is created in state `withErrors` with `publication_errors[].code = 944`. */
@@ -4310,6 +4326,8 @@ export interface components {
          *     On `threads` there are six, and the one that matters is `views`: it is the only one of the four newest networks with something like impressions, so its engagement rate is computed over a real base and not over followers. Sharing arrives split in three — `reposts`, `quotes` and `shares` (outside Threads) — and the three are added into one figure, the same criterion as on X; the breakdown stays in `raw`. A reply is what every other network calls a comment.
          *
          *     On `telegram` there are two as well, and **neither of them is asked for**: the Bot API has no method that returns a message's metrics, so `reactions` arrives on its own through the bot and `comments` is counted in PlanVortex's own inbox. There are no impressions, no reach, no views and no forwards to be had anywhere in it, so engagement is computed over followers.
+         *
+         *     On `slack` there is exactly **one**, `reactions`, and the other absences are the informative part: the Web API publishes no impressions, no reach, no views and no clicks for a message, so those keys are missing rather than zero. There is no `comments` either — Slack threads are not read at all (`comments` is `false` in `GET /social_capabilities`). Engagement is computed over the channel's members.
          */
         PublicationStats: {
             angers?: number;
@@ -4340,7 +4358,7 @@ export interface components {
             profile_visits?: number;
             quotes?: number;
             reach?: number;
-            /** @description Telegram. Every reaction on the post, all emoji together. It is the **complete state and not an increment**: it goes down when somebody takes theirs back. Normalised as `likes`. */
+            /** @description Telegram and Slack. Every reaction on the post, all emoji together. It is the **complete state and not an increment**: it goes down when somebody takes theirs back. Normalised as `likes`. On `slack` it is the only metric the network gives. */
             reactions?: number;
             /** @description Telegram. The same total broken down by emoji. Reactions with a custom emoji are grouped under a single key: their identifier means nothing outside the server that created it. */
             reactions_by_emoji?: {
@@ -4394,7 +4412,7 @@ export interface components {
          *     **This list grows.** Treat it as an open enumeration: a client that rejects an unknown value breaks the day a network is added, which happens several times a year. Not every network does everything — ask `GET /social_capabilities`.
          * @enum {string}
          */
-        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads";
+        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads" | "slack";
         /** @description Statistics collection settings. Only `auto_refresh_twitter` is read; any other key is ignored. */
         StatsSettings: {
             /**
@@ -7173,11 +7191,11 @@ export interface operations {
     };
     deleteMessageTemplate: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Identifier of the template on the network. */
-                template_id?: string;
+                template_id: string;
                 /** @description Name of the template on the network. */
-                template_name?: string;
+                template_name: string;
             };
             header?: never;
             path: {
@@ -10899,7 +10917,8 @@ export interface operations {
                      *       "bluesky",
                      *       "discord",
                      *       "telegram",
-                     *       "threads"
+                     *       "threads",
+                     *       "slack"
                      *     ]
                      */
                     "application/json": components["schemas"]["SocialNetwork"][];

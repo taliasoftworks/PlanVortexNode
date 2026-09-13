@@ -31,8 +31,8 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
     //El techo sube con el catalogo del servidor, y subir tarde no da un error: da un consejo
     //equivocado. Los codigos de Bluesky, Discord, Telegram y Threads (961-977) y los dos frenos
     //de ritmo de la fase de publicaciones ilimitadas (978, 979) nacieron por encima de 960 y
-    //caian fuera de toda familia.
-    { from: 900, to: 979, family: "publication" },
+    //caian fuera de toda familia. Slack estreno el 980-986, que es el mismo caso otra vez.
+    { from: 900, to: 986, family: "publication" },
     { from: 1000, to: 1003, family: "general" },
     { from: 1100, to: 1111, family: "organization" },
     { from: 1200, to: 1207, family: "role" },
@@ -124,8 +124,9 @@ export class UserError extends PlanVortexError {}
 export class AccountError extends PlanVortexError {}
 /** 800-810 — ficheros: formato no admitido, demasiado grande, conversión fallida. */
 export class FileError extends PlanVortexError {}
-/** 900-979 — publicaciones, incluidos los límites por red (caracteres, imágenes, duración) y los
- * dos frenos de ritmo: 978 (demasiado rápido en esta cuenta) y 979 (tope diario de esa red). */
+/** 900-986 — publicaciones, incluidos los límites por red (caracteres, imágenes, duración), los
+ * dos frenos de ritmo —978 (demasiado rápido en esta cuenta) y 979 (tope diario de esa red)— y
+ * los de Slack (980-986), que empiezan por el más común: 980, la app no está en el canal. */
 export class PublicationError extends PlanVortexError {}
 /** 1100-1111 — organizaciones, y el token temporal atado a una sola de ellas (1101). */
 export class OrganizationError extends PlanVortexError {}

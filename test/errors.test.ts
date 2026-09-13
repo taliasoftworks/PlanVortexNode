@@ -38,17 +38,29 @@ describe("la clasificacion de errores", () => {
     });
 
     /**
-     * El rango de publicaciones llega hasta 979, no hasta 960. Los codigos por encima del 960 no
-     * son ninguna rareza: son las cuatro redes ultimas (Bluesky, Discord, Telegram y Threads) y
-     * los DOS FRENOS DE RITMO que sustituyeron al cupo mensual. Fuera de familia, el 978 llegaba
-     * como un error generico y quien lo recibia no tenia forma de saber que la respuesta es
-     * esperar.
+     * El rango de publicaciones llega hasta 986, no hasta 960. Los codigos por encima del 960 no
+     * son ninguna rareza: son las cinco redes ultimas (Bluesky, Discord, Telegram, Threads y
+     * Slack) y los DOS FRENOS DE RITMO que sustituyeron al cupo mensual. Fuera de familia, el 978
+     * llegaba como un error generico y quien lo recibia no tenia forma de saber que la respuesta
+     * es esperar.
      */
     it("clasifica los frenos de ritmo como publicacion, no como desconocidos", () => {
         expect(apiError(978)).toBeInstanceOf(PublicationError);
         expect(apiError(979)).toBeInstanceOf(PublicationError);
         expect(errorFamilyForCode(978)).toBe("publication");
         expect(errorFamilyForCode(975)).toBe("publication");
+    });
+
+    /**
+     * Slack estreno el 980-986, y el 980 —la app no esta en el canal— es el error mas comun de
+     * toda la red: es lo que contesta un canal privado al que nadie ha invitado al bot. Nacio por
+     * encima del techo que tenia el rango, que es exactamente lo que ya paso con el 978.
+     */
+    it("clasifica los codigos de Slack como publicacion", () => {
+        expect(apiError(980)).toBeInstanceOf(PublicationError);
+        expect(apiError(986)).toBeInstanceOf(PublicationError);
+        expect(errorFamilyForCode(980)).toBe("publication");
+        expect(errorFamilyForCode(986)).toBe("publication");
     });
 
     /**

@@ -90,7 +90,7 @@ export class AccountsResource extends Resource {
      * no un fallo: es lo que pasa con Discord en una organización que todavía no ha guardado sus
      * propias credenciales de bot.
      *
-     * **MIRA `authorization`, NO si `link` está vacío.** Diez de las doce redes son `redirect` y se
+     * **MIRA `authorization`, NO si `link` está vacío.** Once de las trece redes son `redirect` y se
      * manda a la persona a `link`. Las otras dos no, y ninguna de las dos falla de forma visible si
      * se recorre la lista redirigiendo a `link`:
      *
@@ -179,6 +179,13 @@ export class AccountsResource extends Resource {
      * **Es el paso que ocupa plaza del plan**: con el cupo lleno contesta 706, así que se llama una
      * a una y se mira el hueco antes (`organizations.limits`). Y es también el que enciende los
      * webhooks de la red, en cualquier plan que no sea el gratuito.
+     *
+     * **En Slack es además lo que mete la app dentro del canal**, y ahí hay un caso que no da
+     * error aquí y sí en la primera publicación: en un canal **público** la app entra sola, y en
+     * uno **privado** no puede —Slack no tiene API para eso— y hace falta que una persona escriba
+     * `/invite @PlanVortex` dentro del canal. Esta llamada devuelve bien igual y la cuenta queda
+     * conectada; lo que falla es publicar, con el error 980. Avísalo **antes** de que elijan el
+     * canal, no después.
      */
     async enable(
         idOrganization: string,

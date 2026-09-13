@@ -9,9 +9,9 @@
  *     de una organizacion. Aqui se llama `PublicationInput`. Los que describen LO MISMO en varias
  *     secciones viven en `common.json` y conservan su nombre —`Publication`, `Account`, `Upload`,
  *     `Message`, `Contact`, `NormalizedMetrics`—: es lo que evita dos tipos para un solo objeto.
- *  2. **Abre las enumeraciones que crecen** (§ trampa 8 del roadmap). `ALLOWED_RRSS` va por diez
+ *  2. **Abre las enumeraciones que crecen** (§ trampa 8 del roadmap). `ALLOWED_RRSS` va por trece
  *     redes y sube varias veces al ano. Si `social_network` fuera una union cerrada, el dia que
- *     entre la undecima **dejaria de compilar el codigo de todos los integradores** hasta que
+ *     entre la siguiente **dejaria de compilar el codigo de todos los integradores** hasta que
  *     actualizasen el paquete, y lo unico que habria pasado es que la API devuelve un valor mas.
  *     Con `T | (string & {})` se autocompletan las conocidas y una nueva sigue compilando.
  *  3. **Avisa de lo que el tipo no puede decir por si solo**, como que `public_path` caduca.
@@ -112,8 +112,9 @@ export type FileFormat = OpenEnum<Schemas["Upload"]["file_format"]>;
  * Sobre que se divide el engagement de una publicacion.
  *
  * No todas las redes dan alcance, asi que se cae en cascada: `reach`, si no `impressions`, si no
- * `followers` (que es lo unico que hay en Bluesky, en Discord y en Telegram — la Bot API no
- * publica impresiones, ni alcance, ni siquiera las vistas de un post). **Dos filas con base
+ * `followers` (que es lo unico que hay en Bluesky, en Discord, en Telegram y en Slack — ni la
+ * Bot API ni la Web API publican impresiones, ni alcance, ni siquiera las vistas de un post).
+ * **Dos filas con base
  * distinta no son comparables**: si las pones en la misma tabla, di cual es.
  */
 export type EngagementBase = OpenEnum<
@@ -289,8 +290,9 @@ export type ClientWithOrganizations =
 /**
  * Una cuenta social conectada a una organizacion.
  *
- * En Discord y en Telegram una cuenta es un **canal**, no un perfil: publicar en dos canales del
- * mismo servidor —o en dos canales de la misma marca— gasta dos cuentas del plan. `error_code`
+ * En Discord, en Telegram y en Slack una cuenta es un **canal**, no un perfil: publicar en dos
+ * canales del mismo servidor —o en dos canales de la misma marca, o en `#anuncios` y `#general`
+ * del mismo workspace— gasta dos cuentas del plan. `error_code`
  * distinto de 0 significa que la conexion se rompio —token caducado, permisos retirados— y hay que
  * reconectarla; en Telegram no caduca nada, porque no hay token de cuenta, y lo que la rompe es que
  * saquen al bot del canal o le quiten el permiso de publicar (error 968).
@@ -355,7 +357,7 @@ export type ConnectToken =
 export type ConnectLink = Schemas["AccountsSocialLinksList"]["links"][number];
 
 /**
- * Con que se autoriza una red: `redirect` (nueve de las once), `meta_embedded_signup` (WhatsApp) o
+ * Con que se autoriza una red: `redirect` (once de las trece), `meta_embedded_signup` (WhatsApp) o
  * `telegram_bot` (Telegram). Se saca de {@link ConnectLink} y esta aqui para poder nombrarlo en un
  * `switch`.
  *

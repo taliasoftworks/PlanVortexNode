@@ -4,6 +4,53 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-13
+
+Slack, the thirteenth network, reaches the package. It is the second release in a row where the
+headline is not a new method, and this time there is a real bug behind it: **Slack's error codes
+arrived outside every family**.
+
+**`"slack"` already compiled before this release, and that is the trap again.** `SocialNetwork` is
+an open enumeration, so a network the package has not been regenerated for type-checks fine and
+quietly loses its autocompletion — the same thing 0.4.0 said about Telegram, and the reason a
+regeneration is not optional even when nothing breaks.
+
+Nothing was removed and no signature moved: upgrading from `0.9.0` needs no changes, and
+`MIGRATION.md` gains no entry.
+
+### Fixed
+
+- **Slack's errors (980-986) were not `PublicationError`.** The publication family stopped at 979,
+  so every one of them fell outside the table and arrived as a plain `PlanVortexError` — including
+  **980, the commonest error on the whole network**: the PlanVortex app is not in the channel. Code
+  that branches on the error class to decide whether a publication failed for a reason the user can
+  fix was told nothing. The range now reaches 986, and a test pins both ends of it. This is the
+  third time the ceiling has been raised late (961-977 for four networks, then 978-979 for the rate
+  brakes), which is why the range carries a comment saying so.
+
+### Added
+
+- **`slack` in the closed union the specification declares**:
+  `PublicationsPublicationInput.social_network`. It is deliberately **not** in `CommentNetwork` nor
+  in `ContactChannel` — Slack has neither a comment inbox nor direct messages, and putting it in
+  either would promise a screen that does not exist.
+- **A warning on `accounts.enable()`, because nothing else announces it.** On Slack that call is
+  also what puts the app inside the channel. On a **public** channel it joins by itself; on a
+  **private** one it cannot — Slack has no API for that — and somebody has to type
+  `/invite @PlanVortex` in the channel. The call succeeds either way and the account stays
+  connected: what fails is the first publication, with error 980. Say it before your user picks the
+  channel.
+
+### Changed
+
+- The documentation of the network-counting prose, stale again and in the same places: the
+  `redirect` count on `accounts.connectLinks` and `SocialAuthorizationMethod` (**eleven of the
+  thirteen** now, not ten of twelve — and one of those two said nine of eleven, a count that had
+  been wrong for two releases), the `Account` note about a network where **an account is a channel**
+  (Slack is the third, so two channels of one workspace are two plan slots), and `EngagementBase`,
+  where Slack joins Bluesky, Discord and Telegram as a network with **no reach figure at all** —
+  engagement is divided by the channel's members, and a row with that base is not comparable with
+  one measured on impressions.
 ## [0.9.0] - 2026-09-04
 
 **Users are unlimited on every plan**, so the quota that said otherwise is gone from the types —

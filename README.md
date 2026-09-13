@@ -372,7 +372,7 @@ if you would rather branch on `error.family`.
 | 601-612              | Users                                                  | `UserError`         |
 | 700-715              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
 | 800-810              | Files                                                  | `FileError`         |
-| 900-979              | Publications, every per-network limit and the two rate brakes | `PublicationError`  |
+| 900-986              | Publications, every per-network limit, the two rate brakes and Slack | `PublicationError`  |
 | 1000-1003            | General                                                | `PlanVortexError`   |
 | 1100-1111            | Organizations                                          | `OrganizationError` |
 | 1200-1207            | Roles                                                  | `PlanVortexError`   |
