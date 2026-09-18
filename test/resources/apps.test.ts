@@ -130,6 +130,15 @@ describe("apps.secret", () => {
 
         expect(await pv.apps.secret(CLIENT_ID, APP_ID)).toBe("s3cr3t-de-keycloak");
     });
+
+    /** Leer y rotar son la MISMA ruta con dos verbos: un GET de más no rota nada y un POST de más sí */
+    it("rotar va por POST a la misma ruta y devuelve el secreto nuevo", async () => {
+        const calls = api.mock("post", `${ONE}/secret`, { secret: "s3cr3t-nuevo" });
+        const pv = api.client();
+
+        expect(await pv.apps.rotateSecret(CLIENT_ID, APP_ID)).toBe("s3cr3t-nuevo");
+        expect(calls[0]?.method).toBe("POST");
+    });
 });
 
 describe("apps.remove", () => {

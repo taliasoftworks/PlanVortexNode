@@ -827,6 +827,42 @@ export type AiPlanCostEstimate = Schemas["AiPlansAiPlanCostEstimate"];
 /** Lo que devuelve encolar un plan: el plan en `pending` y lo que se calculo que costaria. */
 export type AiPlanCreateResult = Schemas["AiPlansAiPlanCreateResponse"];
 
+/**
+ * Lo que rindio UN plan con lo que publico.
+ *
+ * **Las medias solo cuentan las publicaciones medidas** (`publications.measured`): una programada,
+ * una fallida o una recien publicada que nadie ha medido no bajan nada, simplemente no estan.
+ *
+ * `engagement_per_publication` es la cifra por la que se ordena, y **solo compite el plan con
+ * `ranked: true`** —al menos 3 publicaciones medidas, o todas si publico menos—. `maturing: true`
+ * dice que sus numeros todavia se mueven: comparar ese plan con uno del mes pasado es injusto con el
+ * nuevo. Y una metrica ausente en `metrics` es que ninguna publicacion del plan la da, no un cero.
+ *
+ * **Ser el primero no es ser bueno**, y para eso esta `engagement_vs_average`: la media del plan entre
+ * lo que habrian sacado tus publicaciones habituales con sus mismas redes (1 = como tu media, 2 = el
+ * doble). El ranking sigue ordenando por `engagement_per_publication`, asi que el primero puede estar
+ * por debajo de 1 —un plan de LinkedIn saca menos por publicacion que uno de Instagram y aun asi puede
+ * doblar lo suyo—.
+ */
+export type AiPlanResult = Schemas["AiPlanResult"];
+
+/**
+ * El agregado de un conjunto de planes. `engagement_per_publication` es una media PONDERADA —todas
+ * las interacciones entre todas las publicaciones medidas—, no la media de las medias.
+ */
+export type AiPlanResultsGroup = Schemas["AiPlanResultsGroup"];
+
+/** El agregado de los planes de UNA plantilla: la respuesta a «¿que tipo de plan me funciona?». */
+export type AiPlanResultsTemplateGroup = Schemas["AiPlansAiPlanResultsTemplateGroup"];
+
+/** Lo que devuelve {@link AiPlansResource.results}: el total, el desglose por plantilla y la pagina. */
+export type AiPlanResults = Schemas["AiPlansAiPlanResults"];
+
+/** Por que se pueden ordenar los resultados. Cada criterio lleva su direccion natural. */
+export type AiPlanResultsSort = NonNullable<
+    NonNullable<Operations["getAiPlanResultsService"]["parameters"]["query"]>["sort"]
+>;
+
 /** Una app de cliente: las credenciales con las que una integracion se autentica. */
 export type ClientApp = Schemas["AppsClientApp"];
 

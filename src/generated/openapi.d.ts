@@ -205,6 +205,8 @@ export interface paths {
          *
          *     **The user's email must be verified** (`ERROR_CODE_546`). This is the only route in `/apps` that asks for it: an app is a key to the whole public API, and this is what stops a throwaway address from minting them in bulk. Reading, updating and deleting an app you already own do not check it.
          *
+         *     **The identifier has a format** (error 533): lowercase letters, numbers, `.`, `-` and `_`, starting with a letter or a number, 3 to 64 characters. Pick it carefully — it cannot be changed later (error 547).
+         *
          *     Every URL is validated: a bad entry in `allowed_domains` answers 531, in `redirect_urls` 532, and a bad `webhook_url` answers 535.
          *
          *     **The secret is not in the response.** Read it with `GET /clients/{id_client}/apps/{id_app}/secret`.
@@ -239,6 +241,8 @@ export interface paths {
          *     Changing `webhook_url` takes effect on the next event; there is no verification handshake.
          *
          *     **It replaces every field with what the body carries.** `name`, `keycloak_client_idenfifier`, `allowed_domains`, `redirect_urls` and `webhook_url` are all written as sent, so omitting one erases it — sending an update without `webhook_url` turns the webhook off. Read the app first and send it back whole.
+         *
+         *     **`keycloak_client_idenfifier` is the one field that is NOT overwritten.** Sending a different one answers `ERROR_CODE_547` and nothing is written: it is the `client_id` your integration authenticates with, and renaming it would lock out everything already asking for tokens with the old one. Send it unchanged, or leave it out. If you need a different identifier, create another app.
          *
          *     **An app token works here.** This is the one part of `/apps` that does: an app can read and update its own record, but it cannot list, create, delete, or read the secret. **No plan is required**: apps are on all four plans, the free one included.
          */
@@ -275,7 +279,19 @@ export interface paths {
          */
         get: operations["getClientAppSecret"];
         put?: never;
-        post?: never;
+        /**
+         * Regenerate the app's secret
+         * @description Rotates the `client_secret` and returns the new one.
+         *
+         *     **The previous secret stops working the moment this answers** — there is no grace period and no overlap. Anything still holding it gets `invalid_client` from `POST /oauth/token` on its very next call, so roll it out before you rotate, not after.
+         *
+         *     **It also changes how your webhooks are signed.** `x-hub-signature` and `x-hub-signature-256` are HMACs of the body computed with this same secret, so a receiver that verifies the signature will start rejecting legitimate deliveries until it is updated too.
+         *
+         *     The new value comes back only here. If you lose it, read it again with `GET /clients/{id_client}/apps/{id_app}/secret` — it is not stored anywhere on our side except Keycloak.
+         *
+         *     **Needs a USER token, not an app token** (`ERROR_CODE_512`), and the `client_app:update` permission — reading the secret changes nothing, this invalidates what was there.
+         */
+        post: operations["regenerateClientAppSecret"];
         delete?: never;
         options?: never;
         head?: never;
@@ -490,6 +506,34 @@ export interface paths {
          * @description Validate a generated plan: its draft publications without errors are re-validated and moved to 'ready', and the plan moves to 'validated'. From that point the normal publish-pending flow publishes them at their publish_date. Only valid from state 'generated'. Requires the ai_plans:update permission.
          */
         post: operations["validateAiPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clients/{id_client}/organizations/{id_organization}/ai_plans/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare the results of AI plans
+         * @description What each AI plan achieved with what it published, the aggregate per template and the total — the data behind «which plan worked best?». Requires **both** `ai_plans:read` and `publication_stats:read`: it shows plans and it shows publication metrics.
+         *
+         *     **The range filters on the plan's week** (`week_start`), not on when it was created: a plan created today for next week has published nothing and has no results yet.
+         *
+         *     **Only plans that published something are listed** — with `social_network`, something on those networks. A plan whose posts are all still scheduled would be a row of blanks. Archived plans are included; cancelled ones are not.
+         *
+         *     **The default order is interactions per measured publication**, and only plans with at least 3 measured publications (or all of them, if they published fewer) compete in it; the rest come after. See `AiPlanResult` for why it is that number and not the total or the engagement rate.
+         *
+         *     Covers **this organization only**, not its children — it is the sibling of `GET .../ai_plans` and talks about the same plans. The dashboard's `ai_plan_results` block does include children.
+         */
+        get: operations["getAiPlanResultsService"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1467,7 +1511,7 @@ export interface paths {
         };
         /**
          * The whole home screen in one call
-         * @description Composes every block of the home screen in a single round trip: operational health, publications, publication metrics, account metrics, plan use, AI plans and unread messages.
+         * @description Composes every block of the home screen in a single round trip: operational health, publications, publication metrics, account metrics, plan use, AI plans, the best AI plans and unread messages.
          *
          *     **A block the caller cannot read is omitted, not refused.** The endpoint only demands the minimum permission — reading the organization — and then checks each block on its own: somebody who can only see publications still gets their home instead of a 403. `available_blocks` says which blocks were allowed, so an absent block for lack of permission and an absent block for lack of data can be drawn differently.
          *
@@ -2654,6 +2698,101 @@ export interface components {
             value_proposition?: string;
             website?: string;
         };
+        /**
+         * @description What ONE AI plan achieved with what it published.
+         *
+         *     **Where the numbers come from.** A plan keeps its publications, and each publication keeps the last known value of its metrics (the same ones `GET /organizations/{id}/publications/stats` returns). This adds those up — nothing here is measured twice or asked to the network again.
+         *
+         *     **Only the publications that went out and were measured count** (`publications.measured`). A post scheduled for tomorrow, one that failed or one published an hour ago that nobody has measured yet does not lower the average: it is simply not in it.
+         *
+         *     **A missing metric is not a zero**, as everywhere else: if no publication of the plan reports `reach`, the plan has no `reach` key.
+         */
+        AiPlanResult: {
+            /** @description Accounts the plan was generated for. */
+            accounts: number;
+            /**
+             * Format: date-time
+             * @description Archived plans are included: archiving is visibility only, and what they published is still published.
+             */
+            archived_date?: string;
+            /** Format: date-time */
+            creation_date: string;
+            /** @description AI credits per interaction: what each interaction cost. Lower is better. Absent with no interactions, with no credits spent (your own AI key) and **whenever `social_network` is filtered** — the cost belongs to the whole plan, and dividing it by one network's interactions would overprice every one of them. */
+            credits_per_engagement?: number;
+            /** @description AI credits the plan cost, for the whole plan. */
+            credits_spent: number;
+            /** @description Interactions per measured publication — **the number plans are ranked by**. The total rewards size (seven accounts for seven days beat one account even if each post does half as well), and the engagement rate divides by reach on some networks and by followers on others, which makes two plans on different networks incomparable. Absent when nothing is measured yet. */
+            engagement_per_publication?: number;
+            /** @description `engagement_per_publication` divided by `expected_engagement_per_publication`: **1 means like your average, 2 twice as much, 0.5 half**. This is the number that says whether a plan is *good*, not just first — the ranking still orders by `engagement_per_publication`, so the first plan can be below 1. Absent with nothing measured or no average to compare with. */
+            engagement_vs_average?: number;
+            /**
+             * @description What **your usual posts** would get with the same mix of networks: the organization's average interactions per measured post on each network, weighted by how many measured posts the plan has there. Two measured posts on Instagram (average 5) and two on LinkedIn (average 1) expect (2·5 + 2·1) / 4 = 3.
+             *
+             *     The average covers **every** measured post of the organization in the range, AI ones included, on the same networks. Weighting by network is what keeps a LinkedIn-only plan from always reading as below average just because LinkedIn moves less than Instagram.
+             */
+            expected_engagement_per_publication?: number;
+            id_ai_plan: string;
+            /** @description The organization the plan belongs to. In the dashboard block it can be a **child** of the organization you asked about, and a plan is only reachable by id through its own organization. */
+            id_organization: string;
+            /** Format: date-time */
+            last_publish_date?: string;
+            /** @description Its numbers are still moving: something is still scheduled, or its last publication is less than 7 days old. Comparing it with a plan from last month is unfair to the new one — say so rather than hiding it. */
+            maturing: boolean;
+            metrics: components["schemas"]["NormalizedMetrics"];
+            prompt: string;
+            publications: {
+                /** @description Failed to publish. */
+                failed: number;
+                /** @description Published **and** with metrics collected: the only ones the averages use. */
+                measured: number;
+                /** @description Went out to the network. */
+                published: number;
+                /** @description Scheduled, or being published right now. */
+                scheduled: number;
+                /** @description Publications of the plan that still exist. Deleted ones do not count. */
+                total: number;
+            };
+            /** @description Whether the plan competes in the ranking: it needs at least **3 measured publications**, or all of them if it published fewer. With a single measurement, one lucky post would put its plan first. */
+            ranked: boolean;
+            /** @description Networks the plan published on. With the `social_network` filter, only the filtered ones. */
+            social_networks: components["schemas"]["SocialNetwork"][];
+            /**
+             * @description Only these two can have results. A `generated` plan was never validated, but someone may have published some of its drafts by hand.
+             * @enum {string}
+             */
+            state: "generated" | "validated";
+            /**
+             * @description What the plan was generated from. A plan created before templates existed reads `standard`.
+             * @enum {string}
+             */
+            template: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
+            /**
+             * Format: date-time
+             * @description The week the plan publishes in. **This is what the range filters on**, not the creation date.
+             */
+            week_start: string;
+        };
+        /** @description The aggregate of a set of plans: all of them, or those of one template. */
+        AiPlanResultsGroup: {
+            /** @description Credits per interaction, counting **only the plans that already have something measured**: a plan validated yesterday brings its whole cost and no interactions, and would make the group look expensive for arriving late. Absent with the `social_network` filter. */
+            credits_per_engagement?: number;
+            /** @description Credits of every plan in the group. */
+            credits_spent: number;
+            /** @description A **weighted** average: every interaction of the group divided by every measured publication of the group — not the average of each plan's average, which would let a one-post plan weigh as much as a forty-post one. */
+            engagement_per_publication?: number;
+            /** @description The group's interactions per post over what was expected, computed over the **same** plans on both sides — a plan with no reference cannot add its interactions to one side only. */
+            engagement_vs_average?: number;
+            /** @description What your usual posts would get with the group's mix of networks, weighted like its average. Only plans that have a reference count. */
+            expected_engagement_per_publication?: number;
+            metrics: components["schemas"]["NormalizedMetrics"];
+            plans: number;
+            publications: {
+                measured: number;
+                published: number;
+            };
+            /** @description How many of them compete in the ranking (see `AiPlanResult.ranked`). */
+            ranked_plans: number;
+        };
         AiPlansAiPlan: {
             /** @example 66d04a6a427f4c43b9d97f54 */
             _id: string;
@@ -2841,6 +2980,32 @@ export interface components {
              */
             week_start?: string;
         };
+        AiPlansAiPlanResults: {
+            /** @description The page of plans, in `sort` order. */
+            ai_plans: components["schemas"]["AiPlanResult"][];
+            /** @description One entry per template that has plans in the range, best `engagement_per_publication` first. This is the answer to «which kind of plan works for me?». */
+            by_template: components["schemas"]["AiPlansAiPlanResultsTemplateGroup"][];
+            /** @description The range that was actually used. The plans in it are those whose **week** starts inside it. */
+            range: {
+                /** Format: date-time */
+                from_date: string;
+                /** Format: date-time */
+                previous_from_date?: string;
+                /** Format: date-time */
+                previous_to_date?: string;
+                /** Format: date-time */
+                to_date: string;
+            };
+            /** @description The order that was applied. */
+            sort: string;
+            /** @description Plans with results in the range (and filters), across every page. */
+            total: number;
+            totals: components["schemas"]["AiPlanResultsGroup"];
+        };
+        AiPlansAiPlanResultsTemplateGroup: components["schemas"]["AiPlanResultsGroup"] & {
+            /** @enum {string} */
+            template: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
+        };
         /** @description The plan source as it was STORED: a snapshot taken when the plan was created, not a live reference. It is what makes a retry reproduce the same plan even if the article went offline or the product left the catalogue — same reason as `organization_context`. */
         AiPlansAiPlanSource: {
             /** @description `campaign`. The event and its date, already normalised to the start of ITS day in the plan timezone. */
@@ -2935,7 +3100,7 @@ export interface components {
             id_client: string;
             /** @description The user who created the app, when it was created from the panel. */
             id_user?: string;
-            /** @description The app's `client_id`. */
+            /** @description The app's `client_id`. Fixed for the life of the app: it cannot be changed once created (error 547). */
             keycloak_client_idenfifier: string;
             name: string;
             redirect_urls: string[];
@@ -2951,7 +3116,14 @@ export interface components {
         AppsClientAppInput: {
             /** @description Origins allowed to call the API with this app's identity. Every entry has to be a valid URL (error 531). */
             allowed_domains?: string[];
-            /** @description The app's `client_id`, which is what you send to `POST /oauth/token`. It has to be unique across PlanVortex (error 534). The spelling of the field is historical and kept for compatibility. */
+            /**
+             * @description The app's `client_id`, which is what you send to `POST /oauth/token`.
+             *
+             *     **Format is enforced** (error 533): lowercase letters, numbers, `.`, `-` and `_`, starting with a letter or a number, between 3 and 64 characters — `shop-integration`, not `Shop Integration`. Keycloak itself accepts anything, so an identifier with a space in it used to create an app that could never get a token.
+             *
+             *     It also has to be unique across PlanVortex (error 534), and **it cannot be changed once the app exists** (error 547): it is what your integration authenticates with, so renaming it would lock out everything already using the old one. Send it unchanged on an update, or leave it out. The spelling of the field is historical and kept for compatibility.
+             * @example shop-integration
+             */
             keycloak_client_idenfifier: string;
             /** @description A name for the app. Cannot be blank (error 525). */
             name: string;
@@ -3472,6 +3644,23 @@ export interface components {
                 previous_total: components["schemas"]["NormalizedMetrics"];
                 total: components["schemas"]["NormalizedMetrics"];
             };
+            /**
+             * @description The best AI plans of the range, by interactions per measured publication — the short version of `GET /clients/{id}/organizations/{id}/ai_plans/results`, with the same rules: the range filters on the plan's **week**, and only plans with at least 3 measured publications compete.
+             *
+             *     Unlike that endpoint it covers the organization **and its children**, like the rest of this screen, so each plan carries its `id_organization`.
+             */
+            ai_plan_results?: {
+                /** @description Interactions per measured publication across every plan of the range. */
+                engagement_per_publication?: number;
+                /** @description Interactions per post of every plan of the range over what your usual posts would get on the same networks. 1 means like your average. */
+                engagement_vs_average?: number;
+                /** @description Plans with results in the range. */
+                plans: number;
+                /** @description How many of those compete in the ranking. `plans > 0` with `ranked_plans: 0` means there are results, just not enough measured yet. */
+                ranked_plans: number;
+                /** @description Up to three plans, best first. Only ranked ones. */
+                top: components["schemas"]["AiPlanResult"][];
+            };
             ai_plans?: {
                 by_state: {
                     state?: string;
@@ -3489,6 +3678,8 @@ export interface components {
             /** @description Which blocks the caller was allowed to see. A `false` here is a permission (or plan) answer; a block that is `true` but empty means there is no data. */
             available_blocks: {
                 account_metrics: boolean;
+                /** @description Needs both `ai_plans:read` and `publication_stats:read`: the block shows plans and their publications' metrics. */
+                ai_plan_results: boolean;
                 ai_plans: boolean;
                 health: boolean;
                 messages: boolean;
@@ -4548,12 +4739,16 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Start of the range, ISO 8601. Defaults to 30 days before `to_date`. A range longer than 366 days answers error 1003. */
+        AiPlansfromDate: string;
         /** @description AI plan identifier */
         AiPlansidAiPlan: string;
         /** @description Client identifier */
         AiPlansidClient: string;
         /** @description Organization identifier */
         AiPlansidOrganization: string;
+        /** @description End of the range, ISO 8601. Defaults to now. */
+        AiPlanstoDate: string;
         /** @description App identifier */
         AppsidApp: string;
         /** @description Client identifier */
@@ -5207,6 +5402,34 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The secret */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        secret: string;
+                    };
+                };
+            };
+            400: components["responses"]["AppsError"];
+        };
+    };
+    regenerateClientAppSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App identifier */
+                id_app: components["parameters"]["AppsidApp"];
+                /** @description Client identifier */
+                id_client: components["parameters"]["AppsidClient"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new secret */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5921,6 +6144,73 @@ export interface operations {
              *     | `1101` | Invalid organization |
              *     | `2100` | AI plan doesn't exist. The identifier is invalid or doesn't exist. |
              *     | `2102` | Invalid AI plan state for this operation. Only a plan in state 'generated' can be validated. |
+             *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unhandled error by the server */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAiPlanResultsService: {
+        parameters: {
+            query?: {
+                /** @description Start of the range, ISO 8601. Defaults to 30 days before `to_date`. A range longer than 366 days answers error 1003. */
+                from_date?: components["parameters"]["AiPlansfromDate"];
+                /** @description Plans per page. At most 100. */
+                limit?: number;
+                /** @description Number of plans to skip (pagination) */
+                offset?: number;
+                /** @description Recompute every plan with **only** its publications on these networks, which is what makes plans on different networks comparable. Repeat the parameter for several. `credits_per_engagement` disappears with this filter. */
+                social_network?: components["schemas"]["SocialNetwork"][];
+                /** @description Order of the plans. Each one has its natural direction — `credits_per_engagement` cheapest first, `week_start` newest first, everything else highest first — and plans without that value go last. */
+                sort?: "engagement_per_publication" | "engagement" | "impressions" | "reach" | "credits_per_engagement" | "credits_spent" | "week_start";
+                /** @description Only plans generated from this template. An unknown one answers error 2111. */
+                template?: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
+                /** @description End of the range, ISO 8601. Defaults to now. */
+                to_date?: components["parameters"]["AiPlanstoDate"];
+            };
+            header?: never;
+            path: {
+                /** @description Client identifier */
+                id_client: components["parameters"]["AiPlansidClient"];
+                /** @description Organization identifier */
+                id_organization: components["parameters"]["AiPlansidOrganization"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiPlansAiPlanResults"];
+                };
+            };
+            /**
+             * @description The request failed. The body carries the PlanVortex error code in `code`:
+             *
+             *     | Code | Meaning |
+             *     | --- | --- |
+             *     | `1000` | Invalid `from_date`, or an unknown `sort` or `social_network` (`data.allowed` lists the valid values) |
+             *     | `1001` | Invalid `to_date` |
+             *     | `1003` | Range longer than 366 days |
+             *     | `2111` | Unknown `template` |
+             *     | `1101` | Invalid organization |
              *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
              */
             400: {

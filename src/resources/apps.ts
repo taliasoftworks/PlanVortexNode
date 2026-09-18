@@ -96,6 +96,24 @@ export class AppsResource extends Resource {
         return response.secret;
     }
 
+    /**
+     * Rota el `client_secret` y devuelve el nuevo. **Exige token de usuario** (512) y
+     * `client_app:update`.
+     *
+     * **El secreto anterior deja de valer en cuanto esto contesta**, sin periodo de gracia: lo que
+     * siga usándolo recibe `invalid_client` en su siguiente petición de token. Y **cambia también la
+     * firma de los webhooks**, que es un HMAC con este mismo secreto: un receptor que la verifique
+     * rechazará las entregas legítimas hasta que se actualice. Repártelo antes de rotar, no después.
+     */
+    async rotateSecret(idClient: string, idApp: string, options: RequestOptions = {}): Promise<string> {
+        const response = await this.httpPost<{ secret: string }>(
+            `${this.one(idClient, idApp)}/secret`,
+            undefined,
+            options,
+        );
+        return response.secret;
+    }
+
     private path(idClient: string): string {
         return `/clients/${requireId(idClient, "idClient")}/apps`;
     }

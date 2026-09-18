@@ -113,9 +113,9 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | `pv.contacts`      | `list`, `iterate`, `get`, `create`, `update`, `merge`, `remove`, `removeAll`                                                                                                                                       |
 | `pv.products`      | `list`, `iterate`, `get`, `create`, `catalogs`, `createCatalog`                                                                                                                                                           |
 | `pv.integrations`  | `providers`, `list`, `iterate`, `get`, `connectLink`, `connect`, `reconnect`, `update`, `remove`, `pickerConfig`                                                                                                   |
-| `pv.aiPlans`       | `create`, `get`, `list`, `iterate`, `validate`, `retry`, `regenerate`, `archive`, `unarchive`, `remove`                                                                                                            |
+| `pv.aiPlans`       | `create`, `get`, `list`, `iterate`, `results`, `validate`, `retry`, `regenerate`, `archive`, `unarchive`, `remove`                                                                                                 |
 | `pv.dashboard`     | `summary`, `metrics`, `publications`, `topPublications`, `publicationStats`, `use`                                                                                                                                 |
-| `pv.apps`          | `list`, `get`, `create`, `update`, `remove`, `secret` — **needs a user token**, not app credentials                                                                                                                |
+| `pv.apps`          | `list`, `get`, `create`, `update`, `remove`, `secret`, `rotateSecret` — **needs a user token**, not app credentials                                                                                                |
 
 Every documented endpoint has a method. `pv.request(...)` is still there as an escape hatch — for
 an endpoint added to the API before this package catches up — and the response types are published,

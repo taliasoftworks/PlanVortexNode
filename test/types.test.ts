@@ -101,10 +101,11 @@ describe("el paquete OpenAPI commiteado", () => {
      * publico que se pacto en la fase 2, y si cambia es que alguien ha movido superficie publica.
      * La 133 fue `GET /planner_templates`, que entro con las plantillas del planificador; la 134 y
      * la 135 son `archive` y `unarchive` de un plan, que son dos rutas y no un cuerpo con un
-     * booleano.
+     * booleano. La 136 es `POST /clients/{id}/apps/{id}/secret`, rotar el secreto de una app, que
+     * llego al spec antes que a este paquete; y la 137, `GET .../ai_plans/results`.
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(135);
+        expect(operations(bundle.paths)).toHaveLength(137);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 

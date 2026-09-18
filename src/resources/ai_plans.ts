@@ -69,7 +69,18 @@ import { Resource, requireId } from "./base.js";
 import type { RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
-import type { AiPlan, AiPlanCreateRequest, AiPlanCreateResult, Paginated, Publication } from "../types.js";
+import type {
+    AiPlan,
+    AiPlanCreateRequest,
+    AiPlanCreateResult,
+    AiPlanResults,
+    AiPlanResultsSort,
+    Paginated,
+    PlannerTemplateName,
+    Publication,
+    SocialNetwork,
+} from "../types.js";
+import type { RangeOptions } from "./dashboard.js";
 
 /** Qué se regenera de una publicación del plan. `image` exige que el plan permitiera imágenes. */
 export type AiPlanRegenerateTarget = "text" | "image";
@@ -81,6 +92,24 @@ export interface AiPlanListOptions extends PageOptions {
      * mandar el plan a otro sitio, no ponerle una etiqueta que lo deje donde estaba.
      */
     archived?: boolean | undefined;
+}
+
+/** Filtros y orden de los resultados de los planes. */
+export interface AiPlanResultsOptions extends RangeOptions, PageOptions {
+    /**
+     * Por defecto `engagement_per_publication`. Cada criterio lleva su dirección natural —
+     * `credits_per_engagement` el más barato primero, `week_start` el más reciente, el resto de
+     * mayor a menor— y los planes sin ese valor van al final.
+     */
+    sort?: AiPlanResultsSort | undefined;
+    /** Sólo los planes generados con esta plantilla. Una que no existe es un 2111. */
+    template?: PlannerTemplateName | undefined;
+    /**
+     * Recalcula cada plan con SÓLO sus publicaciones en estas redes, que es lo que hace comparables
+     * dos planes de redes distintas. Con este filtro `credits_per_engagement` no viene: el coste es
+     * del plan entero y repartirlo entre las interacciones de una red encarecería cada una.
+     */
+    social_network?: readonly SocialNetwork[] | undefined;
 }
 
 /** Lo que devuelve regenerar: la publicación nueva y lo que lleva gastado el plan EN TOTAL. */
@@ -184,6 +213,53 @@ export class AiPlansResource extends Resource {
                 //El servidor sólo entiende el literal "true"; un `false` explícito pediría lo
                 //mismo que no mandar nada, así que se omite en vez de viajar como ruido
                 archived: options.archived ? true : undefined,
+            },
+            options,
+        );
+    }
+
+    /**
+     * Qué rindió cada plan con lo que publicó, el agregado por plantilla y el total: la respuesta a
+     * «¿qué plan funcionó mejor?». Pide `ai_plans:read` **y** `publication_stats:read`.
+     *
+     * Lo que sorprende:
+     *
+     *  - **El rango filtra por la SEMANA del plan** (`week_start`), no por cuándo se creó: un plan
+     *    creado hoy para la semana que viene todavía no ha publicado nada.
+     *  - **Sólo salen los planes que han publicado algo.** Los archivados sí —archivar es sólo
+     *    visibilidad—; los cancelados no.
+     *  - **El orden por defecto es interacciones por publicación medida**, no el total: el total
+     *    premia al plan de siete cuentas aunque cada post rinda la mitad. Y sólo compiten los planes
+     *    con `ranked: true`; los demás van detrás.
+     *  - **Cubre ESTA organización, no sus hijas**, al revés que el bloque `ai_plan_results` de
+     *    {@link DashboardResource.summary}.
+     *
+     * No envuelve la respuesta en un `Paginated`: además de la página trae `totals` y `by_template`,
+     * que no dependen de ella.
+     *
+     * ```ts
+     * const { by_template, ai_plans } = await pv.aiPlans.results(clientId, orgId, {
+     *     from_date: "2026-06-01T00:00:00Z",
+     *     social_network: ["instagram"],
+     * });
+     * const mejor = ai_plans.find((plan) => plan.ranked);
+     * ```
+     */
+    async results(
+        idClient: string,
+        idOrganization: string,
+        options: AiPlanResultsOptions & RequestOptions = {},
+    ): Promise<AiPlanResults> {
+        return this.httpGet<AiPlanResults>(
+            `${this.path(idClient, idOrganization)}/results`,
+            {
+                from_date: options.from_date,
+                to_date: options.to_date,
+                sort: options.sort,
+                template: options.template,
+                social_network: options.social_network,
+                limit: options.limit,
+                offset: options.offset,
             },
             options,
         );

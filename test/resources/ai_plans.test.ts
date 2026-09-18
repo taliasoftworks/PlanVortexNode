@@ -355,3 +355,88 @@ describe("los avisos del plan", () => {
         expect(plan.warnings?.[0]?.data).toEqual({ source_items: 12, capacity: 6 });
     });
 });
+
+/**
+ * RESULTADOS. Dos trampas que sólo se ven en el cable:
+ *
+ *  - **`/results` cuelga de `ai_plans`, al lado de `/{id_ai_plan}`**, así que una ruta mal
+ *    construida (`.../ai_plans/results/...`, o el id donde va `results`) no da 404 sino 2100.
+ *  - **La respuesta NO es un `Paginated`**: trae `totals` y `by_template` además de la página, y
+ *    desenvolverla como un listado se los comería.
+ */
+describe("aiPlans.results", () => {
+    const group = {
+        plans: 2,
+        ranked_plans: 1,
+        publications: { published: 9, measured: 8 },
+        metrics: { engagement: 400, impressions: 9000 },
+        engagement_per_publication: 50,
+        credits_spent: 600,
+        credits_per_engagement: 1.5,
+    };
+    const result = {
+        id_ai_plan: AI_PLAN_ID,
+        id_organization: ORG_ID,
+        prompt: "Pan de masa madre, horno de leña, barrio",
+        template: "from_images",
+        state: "validated",
+        week_start: "2026-08-24T00:00:00.000Z",
+        creation_date: "2026-08-23T09:00:00.000Z",
+        accounts: 1,
+        social_networks: ["instagram"],
+        credits_spent: 48,
+        publications: { total: 7, published: 7, measured: 7, scheduled: 0, failed: 0 },
+        metrics: { engagement: 350 },
+        engagement_per_publication: 50,
+        ranked: true,
+        maturing: false,
+    };
+
+    it("va a `/ai_plans/results` y devuelve la respuesta entera, sin desenvolverla", async () => {
+        api.mock("get", `${LIST}/results`, {
+            range: { from_date: "2026-07-25T00:00:00.000Z", to_date: "2026-08-24T00:00:00.000Z" },
+            sort: "engagement_per_publication",
+            totals: group,
+            by_template: [{ ...group, template: "from_images" }],
+            ai_plans: [result],
+            total: 1,
+        });
+        const pv = api.client();
+
+        const results = await pv.aiPlans.results(CLIENT_ID, ORG_ID);
+
+        expect(results.totals.engagement_per_publication).toBe(50);
+        expect(results.by_template[0]?.template).toBe("from_images");
+        expect(results.ai_plans[0]?.ranked).toBe(true);
+        //Sin `reach` en la fila: ausente, no cero
+        expect(results.ai_plans[0]?.metrics.reach).toBeUndefined();
+    });
+
+    it("manda los filtros y repite `social_network`; lo que no se pide no viaja", async () => {
+        const calls = api.mock("get", `${LIST}/results`, {
+            range: { from_date: "2026-07-25T00:00:00.000Z", to_date: "2026-08-24T00:00:00.000Z" },
+            sort: "credits_per_engagement",
+            totals: { ...group, credits_per_engagement: undefined },
+            by_template: [],
+            ai_plans: [],
+            total: 0,
+        });
+        const pv = api.client();
+
+        await pv.aiPlans.results(CLIENT_ID, ORG_ID, {
+            sort: "credits_per_engagement",
+            template: "campaign",
+            social_network: ["instagram", "linkedin"],
+            limit: 10,
+        });
+        await pv.aiPlans.results(CLIENT_ID, ORG_ID);
+
+        expect(calls[0]?.query).toEqual({
+            sort: ["credits_per_engagement"],
+            template: ["campaign"],
+            social_network: ["instagram", "linkedin"],
+            limit: ["10"],
+        });
+        expect(calls[1]?.query).toEqual({});
+    });
+});
