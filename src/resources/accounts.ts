@@ -22,6 +22,7 @@ import type {
     AccountMetrics,
     ConnectLink,
     ConnectResult,
+    Destination,
     EnableResult,
     Paginated,
     PersistentMenu,
@@ -59,6 +60,15 @@ export interface AccountMetricsOptions extends RequestOptions {
     names?: readonly string[] | undefined;
 }
 
+export interface AccountDestinationOptions extends RequestOptions {
+    /**
+     * `true` se salta la caché corta y vuelve a preguntar a la red. Para un tablero recién creado,
+     * no en cada llamada: todo el tráfico de Pinterest de PlanVortex sale por una sola aplicación, y
+     * la caché es lo que evita que un selector que se abre en cada publicación se la gaste.
+     */
+    refresh?: boolean | undefined;
+}
+
 export interface ConnectLinksOptions extends RequestOptions {
     /** Sólo estas redes. Sin esto vuelven todas las que la organización pueda conectar ahora. */
     social_network?: readonly SocialNetwork[] | undefined;
@@ -90,7 +100,7 @@ export class AccountsResource extends Resource {
      * no un fallo: es lo que pasa con Discord en una organización que todavía no ha guardado sus
      * propias credenciales de bot.
      *
-     * **MIRA `authorization`, NO si `link` está vacío.** Once de las trece redes son `redirect` y se
+     * **MIRA `authorization`, NO si `link` está vacío.** Doce de las catorce redes son `redirect` y se
      * manda a la persona a `link`. Las otras dos no, y ninguna de las dos falla de forma visible si
      * se recorre la lista redirigiendo a `link`:
      *
@@ -292,6 +302,58 @@ export class AccountsResource extends Resource {
             `${this.path(idOrganization, idAccount)}/metric_list`,
             undefined,
             options,
+        );
+    }
+
+    /**
+     * Los sitios DENTRO de la cuenta a los que se puede mandar una publicación: en Pinterest, los
+     * tableros.
+     *
+     * **En casi todas las redes no hay, y no es un fallo tuyo**: conectar la cuenta ya dice dónde
+     * sale la publicación —el muro, el canal, el perfil—, y ahí la llamada contesta 992. Sólo
+     * tienen lista las redes con `destinations` en `catalog.socialCapabilities()`.
+     *
+     * **Donde existen, el destino es OBLIGATORIO**: lo que vuelve aquí es lo que se manda en
+     * `destination.id` al crear la publicación, y sin él se crea en `withErrors` con el 987.
+     *
+     * Las **secciones** de un tablero no vienen en la lista: están en {@link destination}.
+     */
+    async destinations(
+        idOrganization: string,
+        idAccount: string,
+        options: AccountDestinationOptions = {},
+    ): Promise<Destination[]> {
+        return unwrapOne<Destination[]>(
+            await this.httpGet<unknown>(
+                `${this.path(idOrganization, idAccount)}/destinations`,
+                { refresh: options.refresh },
+                options,
+            ),
+            "destinations",
+        );
+    }
+
+    /**
+     * Un destino con su detalle: en Pinterest, las **secciones** del tablero, que es lo que va en
+     * `destination.section_id`. No vienen en {@link destinations} porque leerlas de todos los
+     * tableros costaría una llamada a la red por tablero.
+     *
+     * Se comprueba contra los destinos de ESTA cuenta: uno que no está en ella contesta 993, exista
+     * o no en la red.
+     */
+    async destination(
+        idOrganization: string,
+        idAccount: string,
+        idDestination: string,
+        options: AccountDestinationOptions = {},
+    ): Promise<Destination> {
+        return unwrapOne<Destination>(
+            await this.httpGet<unknown>(
+                `${this.path(idOrganization, idAccount)}/destinations/${requireId(idDestination, "idDestination")}`,
+                { refresh: options.refresh },
+                options,
+            ),
+            "destination",
         );
     }
 

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -61,6 +63,31 @@ describe("la clasificacion de errores", () => {
         expect(apiError(986)).toBeInstanceOf(PublicationError);
         expect(errorFamilyForCode(980)).toBe("publication");
         expect(errorFamilyForCode(986)).toBe("publication");
+    });
+
+    /**
+     * Pinterest estreno el 987-996, por encima del techo del rango: la TERCERA vez que pasa, despues
+     * del 978 y del 980. El 987 —la publicacion no dice en que tablero va— es el mas comun, y el
+     * 991 es el que mas importa clasificar bien: es Pinterest frenando a la aplicacion, llega 429
+     * con `Retry-After`, y fuera de familia no habia forma de saber que la respuesta es esperar.
+     */
+    it("clasifica los codigos de Pinterest como publicacion", () => {
+        expect(apiError(987)).toBeInstanceOf(PublicationError);
+        expect(apiError(996)).toBeInstanceOf(PublicationError);
+        const throttled = createErrorFromResponse({ body: { code: 991 }, status: 429, retryAfter: 30 });
+        expect(throttled).toBeInstanceOf(PublicationError);
+        expect(throttled.retryAfter).toBe(30);
+    });
+
+    /**
+     * Tres codigos que el servidor ya emitia y que la libreria tiraba a la clase base: 547 (el
+     * identificador de una app no se cambia), 548 (fallo al rotar el secreto, el mismo metodo que
+     * trajo la 0.11.0) y 716 (la sesion de Bluesky la esta renovando otro proceso: reintentar).
+     */
+    it("clasifica los codigos de apps y el de la sesion de Bluesky", () => {
+        expect(apiError(547)).toBeInstanceOf(AuthError);
+        expect(apiError(548)).toBeInstanceOf(AuthError);
+        expect(apiError(716)).toBeInstanceOf(AccountError);
     });
 
     /**
@@ -134,6 +161,21 @@ describe("los codigos de token", () => {
 });
 
 describe("las familias del catalogo", () => {
+    /**
+     * LA RAIZ de los tres tests de arriba: cada vez que el servidor estrenaba codigos por encima del
+     * techo de un rango —978, 980, 987—, esta libreria los clasificaba mal durante semanas y nada
+     * avisaba. Las tablas de error del spec commiteado nombran cada codigo que un endpoint puede
+     * devolver, asi que todos tienen que caer en alguna familia. Si esto falla tras un
+     * `npm run generate`, sube el techo del rango en `PLANVORTEX_ERROR_RANGES`.
+     */
+    it("da familia a todos los codigos que documenta el spec", () => {
+        const spec = readFileSync(new URL("../openapi/planvortex.openapi.json", import.meta.url), "utf8");
+        const codes = new Set([...spec.matchAll(/\| `(\d{3,4})` \|/g)].map((match) => Number(match[1])));
+        expect(codes.size).toBeGreaterThan(100);
+        const orphans = [...codes].filter((code) => errorFamilyForCode(code) === undefined);
+        expect(orphans).toEqual([]);
+    });
+
     it("coloca cada rango donde dice el roadmap", () => {
         expect(errorFamilyForCode(536)).toBe("auth");
         expect(errorFamilyForCode(810)).toBe("file");

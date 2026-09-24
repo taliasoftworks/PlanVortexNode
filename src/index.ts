@@ -37,6 +37,7 @@ export type { FileInput, FileSource } from "./core/files.js";
 export type { RequestOptions, RequestSender } from "./resources/base.js";
 export type {
     AccountCapability,
+    AccountDestinationOptions,
     AccountListOptions,
     AccountMetricsOptions,
     ConnectCallbackParams,
@@ -183,6 +184,7 @@ export type {
     AiPlanCostEstimate,
     AiPlanCreateRequest,
     AiPlanCreateResult,
+    AiPlanDestination,
     AiPlanNotice,
     AiPlanOptions,
     AiPlanOptionsInput,
@@ -224,6 +226,7 @@ export type {
     DashboardMetricsResult,
     DashboardPublicationRef,
     DashboardRange,
+    Destination,
     EnableResult,
     EngagementBase,
     FileFormat,
@@ -262,6 +265,7 @@ export type {
     ProductCatalogInput,
     ProductInput,
     Publication,
+    PublicationDestination,
     PublicationErrorDetail,
     PublicationInput,
     PublicationLimits,

@@ -367,7 +367,7 @@ export interface paths {
         put?: never;
         /**
          * Create an AI publication plan
-         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (it contracts AI credits; Free does not), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117).
+         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (it contracts AI credits; Free does not), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117). With a Pinterest account in the plan, two more checks run at creation: every Pinterest account needs its board in `destinations` (2118), and a configuration that would leave pins without an image is refused (2119).
          */
         post: operations["addAiPlan"];
         delete?: never;
@@ -797,7 +797,7 @@ export interface paths {
          *
          *     **Telegram does not come through here, and cannot be made to.** That network has no callback: the account is created by PlanVortex when the bot is added to a channel, and what authorizes it is a single-use voucher minted at that moment and spent in the same breath — it never leaves the server, so calling this endpoint for `telegram` answers error 700. It is deliberate: the bot is shared, so without it anyone could hang any channel where that bot is an admin off their own organization by passing a chat id by hand. What an integration listens for instead is the `new_account` webhook notification.
          *
-         *     **And a Telegram account arrives already active.** In the other twelve networks this endpoint hands you accounts that are still off, and you pick which ones spend a plan slot with `POST .../accounts/{id_account}/enable`. Here there is nothing to call: one channel arrives — the one the person picked in Telegram — and PlanVortex takes the slot for it right then. If the plan has no free slot the account is still created, off, and the person is told so in the bot chat; `GET /organizations/{id_organization}/accounts` will not list it, because that listing only returns active accounts, but naming it in the `accounts` filter does return it.
+         *     **And a Telegram account arrives already active.** In every other network this endpoint hands you accounts that are still off, and you pick which ones spend a plan slot with `POST .../accounts/{id_account}/enable`. Here there is nothing to call: one channel arrives — the one the person picked in Telegram — and PlanVortex takes the slot for it right then. If the plan has no free slot the account is still created, off, and the person is told so in the bot chat; `GET /organizations/{id_organization}/accounts` will not list it, because that listing only returns active accounts, but naming it in the `accounts` filter does return it.
          */
         get: operations["connectAccount"];
         put?: never;
@@ -920,6 +920,56 @@ export interface paths {
          *     A *conversation* here is one participant on one day: the same contact writing three times in an afternoon counts once, and counts again tomorrow. It is the unit the plan is measured in, not the number of messages.
          */
         get: operations["getAccountConversationsTotal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{id_organization}/accounts/{id_account}/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List where this account can publish
+         * @description The places inside the account a publication can go to: on Pinterest, the boards.
+         *
+         *     **Most networks have none, and that is not a failure of yours.** Connecting the account already says where a publication comes out — the wall, the channel, the profile — so only the networks that answer `destinations: true` in `GET /social_capabilities` have anything to list. Anywhere else this answers error 992.
+         *
+         *     **Where they exist, the destination is required.** What comes back here is what you send in `destination.id` when creating the publication, and one created without it is created in state `withErrors` with `publication_errors[].code = 987`, which the background job will not attempt.
+         *
+         *     The **sections** of a board are not in this listing: ask for one destination to get them.
+         */
+        get: operations["getAccountDestinations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{id_organization}/accounts/{id_account}/destinations/{id_destination}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one destination and its sections
+         * @description One destination with its detail: on Pinterest, the sections of the board, which is what goes in `destination.section_id`.
+         *
+         *     They are deliberately not in the listing — reading the sections of every board would cost one call to the network per board.
+         *
+         *     **It is checked against this account's own destinations, not asked of the network blind.** A destination that is not in this account answers error 993, whether it never existed, was just deleted, or belongs to somebody else; without that check the endpoint would read any public board's sections with your token.
+         */
+        get: operations["getAccountDestination"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1408,7 +1458,7 @@ export interface paths {
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
          *
-         *     **Read `authorization`, not `link`.** Eleven of the thirteen networks are `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
+         *     **Read `authorization`, not `link`.** Almost every network is `redirect` and you send the person to `link`. Two are not, and neither of them fails visibly if you treat it as one:
          *
          *     • **WhatsApp is not a URL at all.** Its sign-up is Meta's Embedded Signup, a popup you raise with the Facebook JavaScript SDK, so its `link` is an empty string and everything you need to open that popup travels in `authorization`. A client that loops over the list and redirects to `link` sends its user to its own page.
          *     • **Telegram has a link and still is not a redirect.** It opens a chat with the PlanVortex bot, and nobody comes back from it: the account is born minutes later, from the bot being added to a channel, and it is announced over the WebSocket. Open it in another tab and keep listening; redirect to it and there is nobody left to tell.
@@ -2398,7 +2448,9 @@ export interface paths {
          *
          *     `comments` is the coarse gate — whether the network has comments at all. Which *actions* it allows on one is a finer question and lives in `GET /social_comment_actions`, because the shape here is `{[capability]: boolean}` and nesting an object inside would break it.
          *
-         *     Today ten networks answer `comments: true`: Facebook, Instagram, Threads, LinkedIn, X, YouTube, Google Business, Bluesky, Discord and Telegram. TikTok and WhatsApp answer `false`, for reasons of theirs and not ours.
+         *     Today ten networks answer `comments: true`: Facebook, Instagram, Threads, LinkedIn, X, YouTube, Google Business, Bluesky, Discord and Telegram. TikTok, WhatsApp, Slack and Pinterest answer `false`, for reasons of theirs and not ours — on Pinterest the API *counts* a pin's comments and offers no way to read them, so the figure shows up in the publication's statistics and there is still no inbox.
+         *
+         *     **Two of the keys are about publishing, not about reading.** `destinations` says the network publishes into places inside the account and every publication has to name one — a Pinterest board, read with `GET /organizations/{id_organization}/accounts/{id_account}/destinations`. `link` says a publication carries a destination link of its own, separate from its text. Both are `false` everywhere but `pinterest` today, and both are the reason to ask this matrix instead of keeping a list of your own: a composer with its own copy of which network has which field is exactly what drifted with the character limits.
          *
          *     A `true` here is about the **network**, not about one account of it: a Telegram channel with no linked discussion group answers 965 on its comments even though the network has them.
          *
@@ -2631,7 +2683,7 @@ export interface components {
         /**
          * @description **How** an account of this network is authorized, which is not always "send the user to this URL".
          *
-         *     Eleven of the thirteen networks are `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
+         *     Almost every network is `redirect`: open `link` and the network sends the person back to PlanVortex with a code. Two are not:
          *
          *     • **WhatsApp.** Its sign-up is Meta's *Embedded Signup*: a popup raised by the Facebook JavaScript SDK from your own page, which returns — over `postMessage` — session data (`waba_id`, `phone_number_id`) that no query string carries. Its `link` is therefore an empty string.
          *     • **Telegram.** There is no OAuth here: no consent screen, no `code`, no account token. `link` opens a private chat with the PlanVortex bot, the person then adds that bot to their channel, and **the account is created from that event**, not from any request of yours. Which means the connection cannot be finished by calling `GET /organizations/{id_organization}/account-connect/telegram` — see that endpoint.
@@ -2813,6 +2865,8 @@ export interface components {
             creation_date: string;
             /** @description AI credits actually consumed by the generation. */
             credits_spent: number;
+            /** @description The destination of each account of the plan that needs one (today, the board of every Pinterest account). Empty on a plan without such accounts, and on every plan created before destinations existed. */
+            destinations?: components["schemas"]["AiPlansAiPlanDestination"][];
             /** @description Last generation error. Present only in state `failed`. */
             error?: components["schemas"]["AiPlansAiPlanNotice"];
             /** Format: date-time */
@@ -2848,7 +2902,11 @@ export interface components {
             /**
              * @description Non-blocking notices about the LAST attempt (they are cleared when a new one starts). The plan is generated and perfectly usable; your UI just has to say what happened.
              *
-             *     Today there is one: **2117 — some source items did not fit in the plan week.** A plan is weekly and the source does not extend it, so 12 photos with 6 slots left publish 6 and the rest are dropped. `data` carries `{ source_items, capacity }`. Better said BEFORE creating the plan (the slots are the publish days x the accounts) than after charging for it.
+             *     Today there are two.
+             *
+             *     **2117 — some source items did not fit in the plan week.** A plan is weekly and the source does not extend it, so 12 photos with 6 slots left publish 6 and the rest are dropped. `data` carries `{ source_items, capacity }`. Better said BEFORE creating the plan (the slots are the publish days x the accounts) than after charging for it.
+             *
+             *     **922 — a publication of a network that cannot publish without an image was left without one.** On Pinterest a pin is an image or a video, never text. The plan cannot be created with a configuration that would cause this (2119), but an image generation that fails halfway through the plan cannot be foreseen. `data` carries `{ step, social_network, id_account, id_publication }`: that draft will not publish until it has an image — regenerate it or attach one.
              */
             warnings?: components["schemas"]["AiPlansAiPlanNotice"][];
         };
@@ -2866,6 +2924,14 @@ export interface components {
         AiPlansAiPlanCreateRequest: {
             /** @description Account ids (belonging to the organization) to generate the plan for. */
             accounts: string[];
+            /**
+             * @description Where each account publishes, for the networks that answer `destinations: true` in `GET /social_capabilities` — today `pinterest` alone, where it is the board of every pin of that account.
+             *
+             *     **On Pinterest it is required, one entry per Pinterest account of the plan.** A plan without it — or with a board id that is not a string of digits — is rejected with **2118**, listing EVERY account that fails in `data.accounts[]` with the same `reason` as the publication's 987 (`missing`, `invalid_id`, `invalid_section_id`), so your UI can mark them all at once. Without this check the plan would be created, charged, and leave a week of drafts in `withErrors` with the 987.
+             *
+             *     Entries for accounts on networks without destinations are dropped, not rejected. The board is **not** checked against Pinterest at creation — that would make creating a plan depend on Pinterest answering; a board that does not exist fails when the pin is published. Read the account's boards with `GET /organizations/{id_organization}/accounts/{id_account}/destinations`.
+             */
+            destinations?: components["schemas"]["AiPlansAiPlanDestination"][];
             options?: components["schemas"]["AiPlansAiPlanOptionsInput"];
             /** @description Theme prompt written by the user. */
             prompt: string;
@@ -2886,6 +2952,18 @@ export interface components {
             estimate: components["schemas"]["AiPlansAiPlanCostEstimate"];
             /** @description Shortcut to estimate.estimated_cost. */
             estimated_cost: number;
+        };
+        /**
+         * @description The destination of ONE account of the plan: the Pinterest board where **all** of that account's publications of the plan go.
+         *
+         *     One per ACCOUNT, not one per plan, because a plan can carry three Pinterest profiles and each one has its own boards. And it travels with the account, not with the content: in a `shared` plan the same content replicated to three profiles lands on three boards with nothing else to touch.
+         *
+         *     There is no default destination stored on the account: it lives in the plan alone.
+         */
+        AiPlansAiPlanDestination: {
+            destination: components["schemas"]["PublicationDestination"];
+            /** @description An account of the plan — one of `accounts`. An entry for an account that is not in the plan is a 2106 (almost always an id swapped by mistake). */
+            id_account: string;
         };
         AiPlansAiPlanList: {
             ai_plans: components["schemas"]["AiPlansAiPlan"][];
@@ -2916,6 +2994,8 @@ export interface components {
              * @default es
              */
             language: string;
+            /** @description The destination link given to the plan's publications on the networks with `link: true` (today `pinterest`). Absent when none was sent or the plan has no such network. */
+            link?: string;
             /** @description Optional cap on the number of images; the credit budget may reduce it further. */
             max_images?: number;
             /**
@@ -2962,6 +3042,12 @@ export interface components {
             gallery_uploads?: string[];
             /** @description Language of the generated texts. Optional; defaults to `"es"`. */
             language?: string;
+            /**
+             * @description **The destination link** of the plan's publications — the pin's `link`, the same for every publication of the plan. Optional: a pin without a link is legitimate, it just takes nobody anywhere.
+             *
+             *     It only reaches the publications of the networks that answer `link: true` in `GET /social_capabilities` (today `pinterest`); with none of them in the plan it is dropped. With one, it is validated **at creation**: a URL Pinterest would reject is a **994** now (`data.reason` `invalid_url` or `too_long`), not a week of pins failing at publish time.
+             */
+            link?: string;
             /** @description Optional cap on the number of images; the credit budget may reduce it further. */
             max_images?: number;
             /** @description Days of the week the plan publishes on, in ISO 8601 numbering (1 = Monday ... 7 = Sunday). Defaults to the whole week. There is still at most ONE publication per day and account, so this is what bounds the size and the cost of the plan: the number of generated posts is (selected days x accounts). Must be a non-empty array of unique integers between 1 and 7, or the request is rejected with 2106. The 7-day window starts at week_start, so each ISO day appears exactly once: with a week_start in mid-week, day 1 (Monday) is the FOLLOWING Monday. If the selected days leave no future slot at all, the request is rejected with 2108. Optional; defaults to `[1,2,3,4,5,6,7]`. */
@@ -3230,6 +3316,8 @@ export interface components {
              * @description Maximum size of one file, in megabytes.
              *
              *     **On `slack` this one is a ceiling, not a promise.** 1.024 MB is what the network allows; the real limit is the lesser of that and the storage the client's own workspace plan still has, which no API exposes. A file inside this number can still come back as error 986. It is the only key in this map with that property.
+             *
+             *     **On `pinterest` this number is the IMAGE one** (~20 MB); a video is allowed two orders of magnitude more. It is the one entry in this map that does not apply to every file of its network, so a size warning shown against it would be wrong on every video. Over whichever ceiling applies, the publication is created in state `withErrors` with `publication_errors[].code = 996` and `data.max_mb`.
              */
             max_file_size_mb: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Second text limit, in UTF-8 bytes. `0` means the network does not measure text in bytes; only Bluesky does, at 3.000. */
@@ -3240,6 +3328,8 @@ export interface components {
              * @description How many images one publication accepts. `0` means images are not a publication on that network.
              *
              *     **On `discord`, `threads` and `slack` it counts images and videos together**, because there the carousel is one message carrying several attachments and not several publications: what is validated is the total number of files. Over it, the publication is created in state `withErrors` — on `slack` with `publication_errors[].code = 982`.
+             *
+             *     **On `pinterest` it is a ceiling with a floor under it.** Several images are a carousel of 2 to 5: one image is not a small carousel (it is a plain image pin, which is a different call) and six is not a trimmed one. Outside that range the publication is created in state `withErrors` with `publication_errors[].code = 990`.
              */
             total_images: components["schemas"]["CatalogSocialLimitsMap"];
             /** @description Maximum video duration. A network that limits weight instead of duration is not here but in `max_file_size_mb`. */
@@ -3500,6 +3590,10 @@ export interface components {
         /** @description The coarse gates of one network */
         CommentsSocialCapabilities: {
             comments: boolean;
+            /** @description The network publishes into **places inside the account**, and every publication has to name one: a Pinterest board. When this is `true`, read `GET /organizations/{id_organization}/accounts/{id_account}/destinations` and send one back in `destination` — a publication created without it lands in state `withErrors` with `publication_errors[].code = 987`. Today only `pinterest`. */
+            destinations: boolean;
+            /** @description The publication carries a **destination link of its own** (`link`), separate from its text: where a pin takes whoever clicks it. On a network that answers `false` the field is deleted on save, so do not offer it. Today only `pinterest`. */
+            link: boolean;
             messages: boolean;
             persistent_menu: boolean;
             products: boolean;
@@ -3850,7 +3944,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-546 auth, tokens and client apps · 601-612 user · 700-715 social accounts · 800-810 files · 900-986 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
+            /** @description PlanVortex error code. Ranges: 500-548 auth, tokens and client apps · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -4308,6 +4402,8 @@ export interface components {
             _id: string;
             /** Format: date-time */
             creation_date: string;
+            /** @description Where inside the account this publication goes. Only present on the networks that answer `destinations: true` in `GET /social_capabilities`. */
+            destination?: components["schemas"]["PublicationDestination"];
             /**
              * @description What this publication's engagement rate is divided by.
              * @enum {string}
@@ -4334,6 +4430,14 @@ export interface components {
             /** @description The integration this publication came from — an RSS feed, for instance. Set when it is created and never changed afterwards. */
             id_integration?: string;
             id_organization: string;
+            /**
+             * @description **The destination link**: where the publication takes whoever clicks it. Not to be confused with `url`, which is the link to the publication *on the network* and only exists once it is published.
+             *
+             *     Only the networks that answer `link: true` in `GET /social_capabilities` carry it — today `pinterest` alone, where a pin has a `link` field of its own and sending traffic somewhere is the whole point of publishing there. Putting the URL inside `text` instead leaves it visible and unclickable.
+             *
+             *     **On every other network the field is deleted on save**, like `destination`.
+             */
+            link?: string;
             /** @description Last known measurement, in the common vocabulary. Absent until it is measured. */
             metrics?: components["schemas"]["NormalizedMetrics"];
             /** @description Internal name. Never shown on the social network. */
@@ -4374,14 +4478,71 @@ export interface components {
             /** @description Link to the publication on the network, when there is one. A **private** Telegram channel has no public URL, so it comes back empty even though the post went out. */
             url?: string;
         };
+        /**
+         * @description **Where inside the account** a publication goes, on the networks where choosing the account is not yet choosing the destination. Today that is `pinterest` alone, where it is the board the pin is saved to.
+         *
+         *     Ask `destinations` in `GET /social_capabilities` instead of keeping a list of your own, and read the account's boards with `GET /organizations/{id_organization}/accounts/{id_account}/destinations`.
+         *
+         *     **On Pinterest it is required.** A publication created without it is created in state `withErrors` with `publication_errors[].code = 987` and the background job will not attempt it — the same treatment as a YouTube video with no title, and for the same reason: a scheduled publication that dies at 3 a.m. over a board that was missing from the start is a failure that could have been told to the person while they were still there.
+         *
+         *     **On every other network the field is deleted, not rejected.** A `destination` on a Facebook publication would be a field that does nothing, and giving it back in the response would be worse than dropping it.
+         *
+         *     `name` and `section_name` are labels for display ("Recipes > Desserts"). The server never checks them and nothing is decided by them: what publishes is `id`.
+         */
+        PublicationDestination: {
+            /** @description The board id. **Always a string**, never a number: Pinterest's ids are long integers, so a client that sends one as a JSON number has already lost digits to rounding before the request arrives. That is refused — `publication_errors[].code = 987` with `data.reason = "invalid_id"` — rather than published to some other board. Sending the board's *name* instead of its id fails the same way, which is the likeliest first mistake of an integration. */
+            id?: string;
+            /** @description The board's label, for display. Decides nothing. */
+            name?: string;
+            /** @description Pinterest only: the section of the board, optional. Absent or empty means the board itself. Same rule as `id` — anything that is not a string of digits is `data.reason = "invalid_section_id"`. A board's sections arrive in the detail of one destination, not in the list of them. */
+            section_id?: string;
+            /** @description The section's label, for display. Decides nothing. */
+            section_name?: string;
+        };
+        /** @description A place inside the account a publication can be sent to: on Pinterest, a board. */
+        PublicationsDestination: {
+            /** @description The destination's own description, when the network has one. */
+            description?: string;
+            /** @description What goes in `destination.id` when creating a publication. **Always a string**, even though Pinterest's are long integers — parse it as text or you will lose digits. */
+            id: string;
+            /** @description A cover image for the picker, when the network has one. */
+            image?: string;
+            /** @description The name to show in a picker. */
+            name: string;
+            /** @description Pinterest: `PUBLIC`, `PROTECTED` or `SECRET`. Worth showing: a pin on a secret board is seen by nobody else, and afterwards there is nothing in the statistics that explains why it has no impressions. */
+            privacy?: string;
+            /** @description Pinterest: the board's sections, which is what goes in `destination.section_id`. **Only in the detail of one destination** — listing them for every board would cost one call to the network per board. */
+            sections?: {
+                id: string;
+                name: string;
+            }[];
+        };
         /** @description Body accepted when creating or updating a publication. Only these properties are read; anything else in the payload is ignored. */
         PublicationsPublicationInput: {
+            /**
+             * @description Where inside the account the publication goes. **Required on the networks that answer `destinations: true` in `GET /social_capabilities`** — today `pinterest`, where it is the board — and **deleted** on every other one.
+             *
+             *     Read the account's destinations with `GET /organizations/{id_organization}/accounts/{id_account}/destinations` and send back the `id` you got from there. Missing or malformed, the publication is still created, in state `withErrors` with `publication_errors[].code = 987` and a `data.reason` of `missing`, `invalid_id` or `invalid_section_id`. It is **not** checked against the network at creation: that would cost a call to Pinterest on every publication and make creating one depend on Pinterest answering.
+             *
+             *     On an update, omitting it keeps the destination that was there.
+             */
+            destination?: components["schemas"]["PublicationDestination"];
             /**
              * @description Identifiers of uploads previously created through the uploads endpoints, attached to this publication.
              *
              *     **On Slack the files travel inside the message**, not as publications of their own: up to 10 attachments counting images and videos together (`publication_errors[].code = 982` over it), each one under the `max_file_size_mb.slack` ceiling (code 983), and anything the upload itself refuses comes back as code 986.
+             *
+             *     **On Pinterest a pin is an image or a video, never text alone** (code 922 with neither), and it is of one kind only: two to five images make a carousel — outside that range, code 990 — images and videos are not mixed and there is no more than one video (code 916). The weight ceilings are two orders of magnitude apart, so `max_file_size_mb.pinterest` is the **image** one (~20 MB) while a video is allowed far more; over either, code 996 with `data.max_mb`.
              */
             files?: string[];
+            /**
+             * @description **The destination link**: where the publication takes whoever clicks it. Only on the networks that answer `link: true` in `GET /social_capabilities` — today `pinterest`, where it is the whole point of a pin — and **deleted** on every other one. It is not `url`, which is the link to the publication on the network once published.
+             *
+             *     It is optional (a pin with no link is legitimate), but if it is sent it must be a real `http(s)://` URL of at most 2.048 characters: a bare domain such as `mysite.com/recipe` is created in state `withErrors` with `publication_errors[].code = 994` and `data.reason` of `invalid_url` or `too_long`. It is checked when the publication is **created**, not when it is published, so a scheduled pin does not die at 3 a.m. over a link that was already wrong.
+             *
+             *     On an update: omit it to keep what was there, send `null` or `""` to remove it.
+             */
+            link?: string;
             /** @description Internal name for the publication. Useful for grouping; never shown on the social network. */
             name?: string;
             /**
@@ -4400,7 +4561,7 @@ export interface components {
              *     Not every connectable network publishes — a local business listing receives reviews, not posts — so this list is shorter than the one in `GET /social_networks`. Ask `GET /allowed_social_publications` rather than hardcoding it, because it grows.
              * @enum {string}
              */
-            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram" | "threads" | "slack";
+            social_network?: "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube" | "bluesky" | "discord" | "telegram" | "threads" | "slack" | "pinterest";
             /**
              * @description Send `draft` to store the publication without publishing it. If omitted, the state is resolved automatically: `ready` when everything validates, `withErrors` otherwise. Forcing `sended` marks it as published without actually sending it.
              * @enum {string}
@@ -4412,9 +4573,15 @@ export interface components {
              *     **On Telegram the limit depends on what else the publication carries**: 4.096 characters while it is text only, and **1.024** the moment it has an image or a video, because then the text is the caption of a photo, a video or an album and no longer a message. Over the limit it is created in state `withErrors` with `publication_errors[].code = 967`, whose `data` carries `characters`, `max_characters` and `has_media`. Both numbers are published, as `characters.telegram` and `characters.telegram_media` in `GET /social_limits`.
              *
              *     **On Slack the limit is 4.000 characters** and it is counted over the text you send, not over what travels: `&`, `<` and `>` are escaped before publishing, so a text made of ampersands grows on the wire and is still measured here. Over the limit the publication is created in state `withErrors` with `publication_errors[].code = 981`. And because the escaped text is what is measured on the wire, a text that passed at 4.000 characters and is full of `&` is **trimmed** before going out — Slack does not reject a long `text`, it truncates it or splits it into several messages, and one publication showing up as two posts is worse. The text goes out **plain**: Slack speaks *mrkdwn* and not Markdown, and PlanVortex sends no `blocks`, so `**bold**` is published literally.
+             *
+             *     **On Pinterest `text` is the pin's description**, at most 800 characters — the title is the separate `title` field, which is the first thing anyone arriving from Facebook gets wrong. Over it, `publication_errors[].code = 995` with `data.field = "description"`.
              */
             text?: string;
-            /** @description Title for the publication. Only some networks use it: optional on LinkedIn, and **required on YouTube**, where it is the video title and must be 100 characters or fewer — a publication without it, or with a longer one, is created in state `withErrors` with `publication_errors[].code = 944`. */
+            /**
+             * @description Title for the publication. Only some networks use it: optional on LinkedIn, and **required on YouTube**, where it is the video title and must be 100 characters or fewer — a publication without it, or with a longer one, is created in state `withErrors` with `publication_errors[].code = 944`.
+             *
+             *     **On Pinterest it is the pin's title**, optional and at most 100 characters; over it the publication is created in state `withErrors` with `publication_errors[].code = 995` and `data.field = "title"`.
+             */
             title?: string;
         };
         PublicationsPublicationList: {
@@ -4519,6 +4686,8 @@ export interface components {
          *     On `telegram` there are two as well, and **neither of them is asked for**: the Bot API has no method that returns a message's metrics, so `reactions` arrives on its own through the bot and `comments` is counted in PlanVortex's own inbox. There are no impressions, no reach, no views and no forwards to be had anywhere in it, so engagement is computed over followers.
          *
          *     On `slack` there is exactly **one**, `reactions`, and the other absences are the informative part: the Web API publishes no impressions, no reach, no views and no clicks for a message, so those keys are missing rather than zero. There is no `comments` either — Slack threads are not read at all (`comments` is `false` in `GET /social_capabilities`). Engagement is computed over the channel's members.
+         *
+         *     On `pinterest` there are seven, and three of them exist nowhere else: `saves` — the gesture the whole network is built on —, `outbound_clicks` (clicks that left the pin towards its `link`, which is the one normalised as the common `clicks`) and `pin_clicks` (clicks that opened the pin inside Pinterest, with no common equivalent). `impressions` is real here, so the engagement rate is computed over it and not over followers. `video_views` only exists on a video pin. And `comments` is the odd one: Pinterest **counts** them and offers no way to read them, so the number is reported while `comments` is `false` in `GET /social_capabilities` — this network has no comment inbox, and it is not a gap waiting to be filled.
          */
         PublicationStats: {
             angers?: number;
@@ -4534,7 +4703,11 @@ export interface components {
             likes?: number;
             loves?: number;
             negative_feedback?: number;
+            /** @description Pinterest. Clicks that left the pin towards its `link`. This is the one normalised as the common `clicks`. */
+            outbound_clicks?: number;
             page_likes?: number;
+            /** @description Pinterest. Clicks that opened the pin inside Pinterest without leaving it. No common equivalent, so it lives only here. */
+            pin_clicks?: number;
             /** @description X (Twitter). Video playbacks that reached 0% — i.e. started. Comes from X's non-public metrics: omitted when unavailable. */
             playback_0_count?: number;
             /** @description X (Twitter). Video playbacks that reached 25%. Comes from X's non-public metrics: omitted when unavailable. */
@@ -4549,7 +4722,7 @@ export interface components {
             profile_visits?: number;
             quotes?: number;
             reach?: number;
-            /** @description Telegram and Slack. Every reaction on the post, all emoji together. It is the **complete state and not an increment**: it goes down when somebody takes theirs back. Normalised as `likes`. On `slack` it is the only metric the network gives. */
+            /** @description Telegram, Slack and Pinterest. Every reaction on the post, all emoji together, normalised as `likes`. On `telegram` and `slack` it is the **complete state and not an increment**: it goes down when somebody takes theirs back. On `slack` it is the only metric the network gives. */
             reactions?: number;
             /** @description Telegram. The same total broken down by emoji. Reactions with a custom emoji are grouped under a single key: their identifier means nothing outside the server that created it. */
             reactions_by_emoji?: {
@@ -4558,6 +4731,8 @@ export interface components {
             replys?: number;
             retwets?: number;
             saved?: number;
+            /** @description Pinterest. Times the pin was saved to a board — the gesture the network is built on. Normalised as `saves` and counted towards engagement. Not the same key as `saved`, which is Instagram's. */
+            saves?: number;
             share?: number;
             shareMentions?: number;
             shares?: number;
@@ -4603,7 +4778,7 @@ export interface components {
          *     **This list grows.** Treat it as an open enumeration: a client that rejects an unknown value breaks the day a network is added, which happens several times a year. Not every network does everything — ask `GET /social_capabilities`.
          * @enum {string}
          */
-        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads" | "slack";
+        SocialNetwork: "facebook" | "instagram" | "linkedin" | "tiktok" | "twitter" | "whatsapp" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads" | "slack" | "pinterest";
         /** @description Statistics collection settings. Only `auto_refresh_twitter` is read; any other key is ignored. */
         StatsSettings: {
             /**
@@ -5765,6 +5940,9 @@ export interface operations {
              *     | `2114` | The source URL points to a non-public address (`from_text`): loopback, private, link-local or CGNAT. Checked before every redirect and again when the socket opens. |
              *     | `2115` | The selected account has no usable product catalogue (`from_catalog`): its network has no products, or the catalogue could not be read — expired token, deleted catalogue, missing permission — or came back empty. |
              *     | `2116` | The source has no usable items: no images, no products, or no text at all (neither `url` nor `text`, or a pasted text under 200 characters). |
+             *     | `994` | Invalid `options.link` with a network that uses it (`pinterest`) in the plan. `data.reason` is `invalid_url` or `too_long`. |
+             *     | `2118` | A Pinterest account of the plan has no valid board in `destinations`. `data.accounts[]` lists every one that fails, as `{ _id, social_network, reason }`, with `reason` `missing`, `invalid_id` or `invalid_section_id`. |
+             *     | `2119` | The plan would leave pins without an image: a pin is never text-only. Only checked with Pinterest in the plan and a template that GENERATES images (`from_images` and `from_catalog` bring their own photo). `data.reason` is `images_disabled` (`allow_images: false`), `max_images` (a cap below what is needed) or `credits` (not enough credits for that many images); `data` also carries `{ required, images_target, social_networks }`. The images needed are one per day and per account of a network that requires one — Instagram included, because both networks draw on the same image budget. |
              *     | `521` | Invalid client. The identifier is invalid or doesn't exist |
              */
             400: {
@@ -7351,6 +7529,177 @@ export interface operations {
                 };
             };
             400: components["responses"]["MessagesError"];
+        };
+    };
+    getAccountDestinations: {
+        parameters: {
+            query?: {
+                /** @description `true` skips the short cache and asks the network again. For a board that was created a moment ago — not on every call: all of PlanVortex's Pinterest traffic leaves through one application, and the cache is what keeps a picker that opens on every compose from spending it. */
+                refresh?: "true" | "false";
+            };
+            header?: never;
+            path: {
+                /** @description Connected account identifier */
+                id_account: string;
+                /** @description Organization identifier */
+                id_organization: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account's destinations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "destinations": [
+                     *         {
+                     *           "id": "1093847562910384756",
+                     *           "name": "Recipes",
+                     *           "privacy": "PUBLIC",
+                     *           "image": "https://i.pinimg.com/…/board.jpg"
+                     *         },
+                     *         {
+                     *           "id": "1093847562910384799",
+                     *           "name": "Drafts",
+                     *           "privacy": "SECRET"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": {
+                        destinations: components["schemas"]["PublicationsDestination"][];
+                    };
+                };
+            };
+            /**
+             * @description The request failed. The body carries the PlanVortex error code in `code`:
+             *
+             *     | Code | Meaning |
+             *     | --- | --- |
+             *     | `992` | This network has no destinations: the account itself is where publications go. `data` carries `social_network` |
+             *     | `701` | Account not found in this organization |
+             *     | `700` | Account not connected, missing authorization tokens |
+             *     | `1101` | Invalid organization |
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Pinterest is rate limiting, and the request was correct: wait and repeat it. `code` is 991 and `data.retry_after_seconds` says how long. The ceiling is the **application's**, shared by every PlanVortex client on the network, so this is not a sign that the account is broken. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before trying again. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unhandled error by the server */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAccountDestination: {
+        parameters: {
+            query?: {
+                /** @description `true` skips the short cache and asks the network again. For a board that was created a moment ago — not on every call: all of PlanVortex's Pinterest traffic leaves through one application, and the cache is what keeps a picker that opens on every compose from spending it. */
+                refresh?: "true" | "false";
+            };
+            header?: never;
+            path: {
+                /** @description Connected account identifier */
+                id_account: string;
+                /** @description The destination's id **on the network** — the `id` of an entry in the listing, not a PlanVortex identifier. */
+                id_destination: string;
+                /** @description Organization identifier */
+                id_organization: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The destination */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "destination": {
+                     *         "id": "1093847562910384756",
+                     *         "name": "Recipes",
+                     *         "privacy": "PUBLIC",
+                     *         "sections": [
+                     *           {
+                     *             "id": "5039281746501928374",
+                     *             "name": "Desserts"
+                     *           },
+                     *           {
+                     *             "id": "5039281746501928375",
+                     *             "name": "Breakfast"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": {
+                        destination: components["schemas"]["PublicationsDestination"];
+                    };
+                };
+            };
+            /**
+             * @description The request failed. The body carries the PlanVortex error code in `code`:
+             *
+             *     | Code | Meaning |
+             *     | --- | --- |
+             *     | `993` | That destination is not in this account. `data` carries `social_network` and `destination_id` |
+             *     | `992` | This network has no destinations: the account itself is where publications go |
+             *     | `701` | Account not found in this organization |
+             *     | `700` | Account not connected, missing authorization tokens |
+             *     | `1101` | Invalid organization |
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Pinterest is rate limiting, and the request was correct: wait and repeat it. `code` is 991 and `data.retry_after_seconds` says how long. The ceiling is the **application's**, shared by every PlanVortex client on the network, so this is not a sign that the account is broken. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before trying again. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unhandled error by the server */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     enableAccount: {
@@ -11075,7 +11424,9 @@ export interface operations {
                      *         "products": false,
                      *         "webhooks": true,
                      *         "persistent_menu": false,
-                     *         "comments": true
+                     *         "comments": true,
+                     *         "destinations": false,
+                     *         "link": false
                      *       },
                      *       "google_business": {
                      *         "publications": false,
@@ -11083,7 +11434,19 @@ export interface operations {
                      *         "products": false,
                      *         "webhooks": false,
                      *         "persistent_menu": false,
-                     *         "comments": true
+                     *         "comments": true,
+                     *         "destinations": false,
+                     *         "link": false
+                     *       },
+                     *       "pinterest": {
+                     *         "publications": true,
+                     *         "messages": false,
+                     *         "products": false,
+                     *         "webhooks": false,
+                     *         "persistent_menu": false,
+                     *         "comments": false,
+                     *         "destinations": true,
+                     *         "link": true
                      *       }
                      *     }
                      */
@@ -11208,7 +11571,8 @@ export interface operations {
                      *       "discord",
                      *       "telegram",
                      *       "threads",
-                     *       "slack"
+                     *       "slack",
+                     *       "pinterest"
                      *     ]
                      */
                     "application/json": components["schemas"]["SocialNetwork"][];

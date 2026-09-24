@@ -157,6 +157,19 @@ export class AiPlansResource extends Resource {
      *
      * **El orden de `images` y de `products` es la historia**: el orquestador se queda con la
      * posición de cada uno, así que la foto 3 puede ser el "antes" y la 7 el "después".
+     *
+     * **Con Pinterest en el plan, el tablero de cada cuenta va en `destinations`** y es obligatorio
+     * (2118, con todas las cuentas que fallan). Y un plan que dejaría pins sin imagen se rechaza
+     * aquí con el 2119, antes de gastar un crédito. Ver {@link AiPlanCreateRequest}.
+     *
+     * ```ts
+     * await pv.aiPlans.create(clientId, orgId, {
+     *     prompt: "Recetas de otoño",
+     *     accounts: [pinterestId, instagramId],
+     *     destinations: [{ id_account: pinterestId, destination: { id: board.id, name: board.name } }],
+     *     options: { link: "https://panaderia.example/otono" },
+     * });
+     * ```
      */
     async create(
         idClient: string,

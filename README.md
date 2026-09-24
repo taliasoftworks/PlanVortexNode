@@ -105,7 +105,7 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages`, `plannerTemplates` — all cached in memory per client |
 | `pv.clients`       | `list`, `iterate`, `get`, `update`, `updateAiSettings`, `withOrganizations`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                             |
 | `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`, `updateAiContext`, `updateSocialCredentials`, `deleteSocialCredentials`                            |
-| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                                               |
+| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `destinations`, `destination`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                    |
 | `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                   |
 | `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `updateByAccount`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                           |
 | `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`                                                                                       |
@@ -368,11 +368,11 @@ if you would rather branch on `error.family`.
 
 | Codes                | What went wrong                                        | Class               |
 | -------------------- | ------------------------------------------------------ | ------------------- |
-| 500-546              | Authentication, tokens, permissions, client apps       | `AuthError`         |
+| 500-548              | Authentication, tokens, permissions, client apps       | `AuthError`         |
 | 601-612              | Users                                                  | `UserError`         |
-| 700-715              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
+| 700-716              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
 | 800-810              | Files                                                  | `FileError`         |
-| 900-986              | Publications, every per-network limit, the two rate brakes and Slack | `PublicationError`  |
+| 900-996              | Publications, every per-network limit, the two rate brakes, Slack and Pinterest | `PublicationError`  |
 | 1000-1003            | General                                                | `PlanVortexError`   |
 | 1100-1111            | Organizations                                          | `OrganizationError` |
 | 1200-1207            | Roles                                                  | `PlanVortexError`   |

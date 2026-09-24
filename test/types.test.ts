@@ -102,10 +102,11 @@ describe("el paquete OpenAPI commiteado", () => {
      * La 133 fue `GET /planner_templates`, que entro con las plantillas del planificador; la 134 y
      * la 135 son `archive` y `unarchive` de un plan, que son dos rutas y no un cuerpo con un
      * booleano. La 136 es `POST /clients/{id}/apps/{id}/secret`, rotar el secreto de una app, que
-     * llego al spec antes que a este paquete; y la 137, `GET .../ai_plans/results`.
+     * llego al spec antes que a este paquete; y la 137, `GET .../ai_plans/results`. La 138 y la
+     * 139 son los tableros de Pinterest: la lista de destinos de una cuenta y el detalle de uno.
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(137);
+        expect(operations(bundle.paths)).toHaveLength(139);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 
@@ -322,6 +323,49 @@ describe("la undecima red vive en las uniones cerradas, no en las abiertas", () 
      */
     it("no esta entre los canales de un contacto: Telegram no tiene mensajes directos", () => {
         expectTypeOf<OpenApiComponents["schemas"]["ContactChannel"]>().extract<"telegram">().toBeNever();
+    });
+});
+
+/**
+ * Pinterest, la decimocuarta, es el caso simetrico de Google Business: PUBLICA y no tiene
+ * comentarios — la API de Pinterest no deja leer los de un pin—. Es la primera red que entra en
+ * las uniones de publicar y NO en la de comentarios, y por eso es la prueba de verdad de que las
+ * dos listas son independientes. Meterla en la de comentarios prometeria una bandeja que no existe.
+ */
+describe("la decimocuarta red publica y no comenta", () => {
+    it("autocompleta `pinterest` como red y la admite en el cuerpo de publicar", () => {
+        expectTypeOf<SocialNetwork>().extract<"pinterest">().toEqualTypeOf<"pinterest">();
+        expectTypeOf<OpenApiComponents["schemas"]["PublicationsPublicationInput"]["social_network"]>()
+            .extract<"pinterest">()
+            .toEqualTypeOf<"pinterest">();
+    });
+
+    it("no esta en la lista cerrada de redes con comentarios", () => {
+        expectTypeOf<OpenApiComponents["schemas"]["CommentsCommentNetworkName"]>()
+            .extract<"pinterest">()
+            .toBeNever();
+    });
+
+    /**
+     * El tablero y el enlace son campos de la publicacion, y el tablero tambien del plan de IA. Que
+     * el id sea `string` es lo que importa: un `number` perderia digitos de un id de Pinterest.
+     */
+    it("lleva el tablero y el enlace en la publicacion y el tablero por cuenta en el plan", () => {
+        const pin: PublicationInput = {
+            social_network: "pinterest",
+            text: "La receta, paso a paso",
+            destination: { id: "1123581321345589144", name: "Recetas" },
+            link: "https://panaderia.example/centeno",
+        };
+        const plan: AiPlanCreateRequest = {
+            prompt: "Recetas de otono",
+            accounts: [cuenta._id],
+            destinations: [{ id_account: cuenta._id, destination: { id: "1123581321345589144" } }],
+            options: { link: "https://panaderia.example/otono" },
+        };
+
+        expect(pin.destination?.id).toBe(plan.destinations?.[0]?.destination.id);
+        expectTypeOf<NonNullable<PublicationInput["destination"]>["id"]>().toEqualTypeOf<string | undefined>();
     });
 });
 

@@ -22,17 +22,22 @@ export type PlanVortexErrorRange = {
 };
 
 export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
-    //Hasta 546, no 544: la API publica se abrio a todos los planes y trajo dos codigos nuevos
-    //—545 (ritmo por plan, que sale 429) y 546 (correo sin verificar al crear una app)—.
-    { from: 500, to: 546, family: "auth" },
+    //Hasta 548, no 544: la API publica se abrio a todos los planes y trajo dos codigos nuevos
+    //—545 (ritmo por plan, que sale 429) y 546 (correo sin verificar al crear una app)—, y las
+    //apps dos mas —547 (el identificador de una app no se cambia) y 548 (fallo al rotar el
+    //secreto, que es justo lo que estreno `apps.rotateSecret`)—.
+    { from: 500, to: 548, family: "auth" },
     { from: 601, to: 612, family: "user" },
-    { from: 700, to: 715, family: "account" },
+    //716: la sesion de Bluesky la esta renovando otro proceso. Es temporal, y fuera de familia no
+    //habia forma de saber que la respuesta es reintentar.
+    { from: 700, to: 716, family: "account" },
     { from: 800, to: 810, family: "file" },
     //El techo sube con el catalogo del servidor, y subir tarde no da un error: da un consejo
     //equivocado. Los codigos de Bluesky, Discord, Telegram y Threads (961-977) y los dos frenos
     //de ritmo de la fase de publicaciones ilimitadas (978, 979) nacieron por encima de 960 y
-    //caian fuera de toda familia. Slack estreno el 980-986, que es el mismo caso otra vez.
-    { from: 900, to: 986, family: "publication" },
+    //caian fuera de toda familia. Slack estreno el 980-986, que es el mismo caso otra vez, y
+    //Pinterest el 987-996 — la tercera vez.
+    { from: 900, to: 996, family: "publication" },
     { from: 1000, to: 1003, family: "general" },
     { from: 1100, to: 1111, family: "organization" },
     { from: 1200, to: 1207, family: "role" },
@@ -116,17 +121,20 @@ export class PlanVortexError extends Error {
     }
 }
 
-/** 500-546 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
+/** 500-548 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
 export class AuthError extends PlanVortexError {}
 /** 601-612 — el usuario final. */
 export class UserError extends PlanVortexError {}
-/** 700-715 — cuentas sociales: desconectada, sin permisos en la red, sin refrescar. */
+/** 700-716 — cuentas sociales: desconectada, sin permisos en la red, sin refrescar. */
 export class AccountError extends PlanVortexError {}
 /** 800-810 — ficheros: formato no admitido, demasiado grande, conversión fallida. */
 export class FileError extends PlanVortexError {}
-/** 900-986 — publicaciones, incluidos los límites por red (caracteres, imágenes, duración), los
- * dos frenos de ritmo —978 (demasiado rápido en esta cuenta) y 979 (tope diario de esa red)— y
- * los de Slack (980-986), que empiezan por el más común: 980, la app no está en el canal. */
+/** 900-996 — publicaciones, incluidos los límites por red (caracteres, imágenes, duración), los
+ * dos frenos de ritmo —978 (demasiado rápido en esta cuenta) y 979 (tope diario de esa red)—, los
+ * de Slack (980-986), que empiezan por el más común: 980, la app no está en el canal, y los de
+ * Pinterest (987-996), que empiezan igual: 987, la publicación no dice en qué tablero va. Y uno
+ * de ellos no es un fallo: el 991 es Pinterest frenando a la aplicación, sale 429 con
+ * `Retry-After` y la respuesta es esperar. */
 export class PublicationError extends PlanVortexError {}
 /** 1100-1111 — organizaciones, y el token temporal atado a una sola de ellas (1101). */
 export class OrganizationError extends PlanVortexError {}

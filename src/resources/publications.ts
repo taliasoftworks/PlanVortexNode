@@ -69,6 +69,23 @@ export class PublicationsResource extends Resource {
      *     publish_date: new Date("2026-09-01T10:00:00Z"),
      * });
      * ```
+     *
+     * **En Pinterest el tablero es OBLIGATORIO**, y no da error aquí: sin `destination`, la
+     * publicación se crea en `withErrors` con el 987 y nadie la intenta. Los tableros se leen con
+     * `accounts.destinations()`, y el enlace del pin va en `link`, no dentro del texto. Pinterest
+     * **no tiene comentarios** que leer por la API, así que sus pins nunca llegan a `pv.comments`.
+     *
+     * ```ts
+     * const [board] = await pv.accounts.destinations(orgId, pinterestId);
+     * await pv.publications.create(orgId, pinterestId, {
+     *     social_network: "pinterest",
+     *     title: "Hogaza de centeno",
+     *     text: "La receta, paso a paso",
+     *     files: [upload._id],
+     *     destination: { id: board.id, name: board.name },
+     *     link: "https://panaderia.example/centeno",
+     * });
+     * ```
      */
     async create(
         idOrganization: string,

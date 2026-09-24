@@ -124,6 +124,35 @@ describe("accounts", () => {
         expect(set[0]?.body).toEqual({ persistent_menu: menu });
     });
 
+    /**
+     * Los tableros de Pinterest. Dos cosas que un test tiene que fijar: que el id viaja y vuelve
+     * como CADENA —un entero largo de Pinterest pasado por `number` pierde digitos y el pin sale en
+     * otro tablero, o en ninguno—, y que `refresh` solo se manda cuando se pide, porque la cache es
+     * lo que protege el techo de la aplicacion, que es de TODOS los clientes a la vez.
+     */
+    it("lee los tableros y el detalle de uno, con el id como cadena", async () => {
+        const board = { id: "1123581321345589144", name: "Recetas", privacy: "PUBLIC" };
+        const list = api.mock("get", `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/destinations`, {
+            destinations: [board],
+        });
+        const one = api.mock(
+            "get",
+            `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/destinations/${board.id}`,
+            {
+                destination: { ...board, sections: [{ id: "4815162342", name: "Postres" }] },
+            },
+        );
+        const pv = api.client();
+
+        const boards = await pv.accounts.destinations(ORG_ID, ACCOUNT_ID);
+        const detail = await pv.accounts.destination(ORG_ID, ACCOUNT_ID, board.id, { refresh: true });
+
+        expect(boards[0]?.id).toBe("1123581321345589144");
+        expect(detail.sections?.[0]?.id).toBe("4815162342");
+        expect(list[0]?.query).toEqual({});
+        expect(one[0]?.query).toEqual({ refresh: ["true"] });
+    });
+
     /** Un token por instancia, no uno por llamada: el freno del servidor son 30 por minuto. */
     it("no pide un token por cada petición", async () => {
         api.mock("get", `/organizations/${ORG_ID}/accounts`, { accounts: [], total: 0 });

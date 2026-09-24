@@ -9,7 +9,7 @@
  *     de una organizacion. Aqui se llama `PublicationInput`. Los que describen LO MISMO en varias
  *     secciones viven en `common.json` y conservan su nombre —`Publication`, `Account`, `Upload`,
  *     `Message`, `Contact`, `NormalizedMetrics`—: es lo que evita dos tipos para un solo objeto.
- *  2. **Abre las enumeraciones que crecen** (§ trampa 8 del roadmap). `ALLOWED_RRSS` va por trece
+ *  2. **Abre las enumeraciones que crecen** (§ trampa 8 del roadmap). `ALLOWED_RRSS` va por catorce
  *     redes y sube varias veces al ano. Si `social_network` fuera una union cerrada, el dia que
  *     entre la siguiente **dejaria de compilar el codigo de todos los integradores** hasta que
  *     actualizasen el paquete, y lo unico que habria pasado es que la API devuelve un valor mas.
@@ -88,7 +88,13 @@ export interface Paginated<T> {
  */
 export type SocialNetwork = OpenEnum<Schemas["SocialNetwork"]>;
 
-/** Una red que tiene comentarios. Tambien crece. */
+/**
+ * Una red que tiene comentarios. Tambien crece.
+ *
+ * **No es `SocialNetwork` menos las que no publican**: son dos listas independientes. `pinterest`
+ * publica y NO esta aqui —la API de Pinterest no deja leer los comentarios de un pin, aunque el
+ * numero si llega en sus metricas—, igual que `google_business` esta aqui y no publica.
+ */
 export type CommentNetwork = OpenEnum<Schemas["CommentsCommentNetworkName"]>;
 
 /**
@@ -322,6 +328,27 @@ export type AccountMetricRow = AccountMetrics["stats"][number];
 /** El menu fijo del chat, en el formato de Meta. Solo lo tienen las redes con mensajeria. */
 export type PersistentMenu = Schemas["AccountsPersistentMenu"];
 
+/**
+ * Un sitio DENTRO de la cuenta al que se puede mandar una publicacion: en Pinterest, un tablero.
+ *
+ * Lo que devuelven `accounts.destinations()` y `accounts.destination()`, que es lo que se ENSENA en
+ * un selector. Lo que se MANDA al crear la publicacion es {@link PublicationDestination}, con
+ * `id` como identificador —siempre una cadena— y `name` solo como etiqueta.
+ *
+ * `privacy` merece ensenarse: un pin en un tablero `SECRET` no lo ve nadie mas, y luego no hay nada
+ * en las estadisticas que explique por que no tiene impresiones. Y `sections` solo viene en el
+ * detalle de uno, nunca en la lista.
+ */
+export type Destination = Schemas["PublicationsDestination"];
+
+/**
+ * El `destination` de una publicacion: en que tablero sale. Ver {@link PublicationInput}.
+ *
+ * Solo decide `id` (y `section_id`, si va a una seccion del tablero). `name` y `section_name` son
+ * etiquetas para pintar "Recetas > Postres": el servidor no las comprueba.
+ */
+export type PublicationDestination = Schemas["PublicationDestination"];
+
 // ---------------------------------------------------------------------------------------------
 // Conexion de cuentas
 // ---------------------------------------------------------------------------------------------
@@ -357,7 +384,7 @@ export type ConnectToken =
 export type ConnectLink = Schemas["AccountsSocialLinksList"]["links"][number];
 
 /**
- * Con que se autoriza una red: `redirect` (once de las trece), `meta_embedded_signup` (WhatsApp) o
+ * Con que se autoriza una red: `redirect` (doce de las catorce), `meta_embedded_signup` (WhatsApp) o
  * `telegram_bot` (Telegram). Se saca de {@link ConnectLink} y esta aqui para poder nombrarlo en un
  * `switch`.
  *
@@ -430,6 +457,9 @@ export type FileProperties = Schemas["FileProperties"];
  * Si `state` es `withErrors`, el motivo esta en `publication_errors` —que es un ARRAY— y su `code`
  * es un codigo del catalogo de PlanVortex, nunca un status HTTP.
  *
+ * En Pinterest `destination` dice en que tablero salio el pin, y `link` a donde lleva: no se
+ * confunda con `url`, que es el enlace a la publicacion EN la red y solo existe ya publicada.
+ *
  * Y OJO EN TELEGRAM: un album es UNA publicacion que son VARIOS mensajes. `external_identifier` es
  * el primero y el resto viajan en `extra_data.telegram_message_ids`, que es el unico sitio donde
  * hoy escribe nadie ese campo. En un canal privado ademas no hay `url`, porque no hay `@nombre` que
@@ -463,6 +493,25 @@ export type PublicationErrorDetail = Publication["publication_errors"][number];
  *
  * `publish_date` admite un `Date` ademas de la cadena ISO: la libreria lo convierte. Sin eso, el
  * primer olvido es siempre el `.toISOString()`.
+ *
+ * **Dos campos que solo aplican a unas redes**, y ninguna de las dos listas se copia: se pregunta
+ * `destinations` y `link` en `catalog.socialCapabilities()`. Hoy las dos son solo `pinterest`.
+ *
+ *  - **`destination`: en Pinterest es OBLIGATORIO.** Elegir la cuenta no elige donde sale el pin:
+ *    sale en un TABLERO, y se lee con `accounts.destinations()`. Sin el, la publicacion se crea
+ *    igual pero en `withErrors` con el 987 y nadie la intenta. `destination.id` es SIEMPRE una
+ *    cadena —los ids de Pinterest son enteros largos y un `number` ya ha perdido digitos antes de
+ *    salir—, y mandar el NOMBRE del tablero en vez de su id falla igual.
+ *  - **`link`: el enlace de destino va aqui, no dentro de `text`.** Es a donde lleva el pin a quien
+ *    lo pulsa; metido en el texto se ve y no se puede pulsar. Un enlace que no es `http(s)` es un
+ *    994 al crear.
+ *
+ * En las demas redes los dos se BORRAN al guardar, no se rechazan.
+ *
+ * Y lo demas de Pinterest que el tipo no dice: **no hay publicaciones de solo texto** (922), un
+ * carrusel es de 2 a 5 imagenes sin mezclar con video (990), y `title` y `text` son dos campos con
+ * dos limites —100 y 800— que ademas no se cuentan en la misma unidad (995): el titulo en puntos de
+ * codigo, la descripcion en unidades UTF-16. Los dos numeros vienen de `catalog.socialLimits()`.
  */
 export type PublicationInput = Override<
     Schemas["PublicationsPublicationInput"],
@@ -761,8 +810,30 @@ export type AiPlanOptionsInput = Schemas["AiPlansAiPlanOptionsInput"];
  * `template` y `source` son OPCIONALES: sin ellos el plan es `standard`, que es exactamente lo que
  * hacia cualquier plan antes de que existieran las plantillas. Mandar una opcion que la plantilla
  * elegida no admite —un `shared` en `from_images`— es un 2106, no un silencio.
+ *
+ * **Con una cuenta de Pinterest en el plan hay dos comprobaciones mas, las dos al crear:**
+ *
+ *  - **`destinations` es obligatorio para cada cuenta de Pinterest**: el tablero donde salen TODOS
+ *    sus pins del plan, uno por cuenta ({@link AiPlanDestination}). Sin el —o con un id que no es
+ *    una cadena de digitos— el plan se rechaza con el **2118**, que trae en `data.accounts` TODAS
+ *    las cuentas que fallan. Sin esa comprobacion el plan se crearia, se cobraria y dejaria una
+ *    semana de borradores con el 987.
+ *  - **Un plan que dejaria pins sin imagen se rechaza con el 2119**: un pin nunca es solo texto.
+ *    Solo con una plantilla que GENERA imagenes, y `data.reason` dice por que: `images_disabled`,
+ *    `max_images` o `credits`. Las imagenes necesarias son una por dia y cuenta de una red que la
+ *    exige, Instagram incluida, porque las dos redes tiran del mismo presupuesto.
+ *
+ * Y `options.link` es el enlace de destino de todos los pins del plan: se valida al crear (994) y
+ * se tira si el plan no tiene ninguna red con `link`.
  */
 export type AiPlanCreateRequest = Schemas["AiPlansAiPlanCreateRequest"];
+
+/**
+ * El tablero de UNA cuenta de Pinterest del plan: donde salen todos sus pins. Va por cuenta y no
+ * por plan porque cada perfil tiene sus tableros, y en un plan `shared` el mismo contenido sale en
+ * el tablero de cada perfil sin tocar nada mas. No hay tablero por defecto guardado en la cuenta.
+ */
+export type AiPlanDestination = Schemas["AiPlansAiPlanDestination"];
 
 /**
  * La fuente del plan, tal y como se MANDA. **Una forma por plantilla**: manda solo los campos de la
@@ -808,10 +879,15 @@ export type AiPlanSourceProduct = Schemas["AiPlansAiPlanSourceProduct"];
  * Algo que el plan tiene que decir de si mismo, con la forma de un error de la API. Lo comparten
  * `error` (solo en estado `failed`) y `warnings` (en un plan que se genero bien).
  *
- * Hoy hay un aviso: **2117 — parte de la fuente no cabia en la semana del plan**. Un plan es
- * SEMANAL y la fuente no lo alarga, asi que 12 fotos con 6 huecos libres publican 6 y las demas se
- * quedan fuera; `data` trae `{source_items, capacity}`. Se dice mejor ANTES de crear el plan —los
- * huecos son los dias de publicacion por las cuentas— que despues de haberlo cobrado.
+ * Hoy hay dos avisos:
+ *
+ *  - **2117 — parte de la fuente no cabia en la semana del plan**. Un plan es SEMANAL y la fuente
+ *    no lo alarga, asi que 12 fotos con 6 huecos libres publican 6 y las demas se quedan fuera;
+ *    `data` trae `{source_items, capacity}`. Se dice mejor ANTES de crear el plan —los huecos son
+ *    los dias de publicacion por las cuentas— que despues de haberlo cobrado.
+ *  - **922 — una publicacion de una red que no publica sin imagen se quedo sin ella**: un pin cuya
+ *    imagen fallo a mitad de la generacion. El 2119 impide la configuracion que lo provoca, pero no
+ *    un fallo del proveedor. `data.id_publication` dice cual: no saldra hasta que tenga imagen.
  */
 export type AiPlanNotice = Schemas["AiPlansAiPlanNotice"];
 
