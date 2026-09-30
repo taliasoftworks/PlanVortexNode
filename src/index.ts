@@ -57,7 +57,11 @@ export type {
     RangeOptions,
     TopPublicationsOptions,
 } from "./resources/dashboard.js";
-export type { ConnectLinkOptions, IntegrationListOptions } from "./resources/integrations.js";
+export type {
+    ConnectLinkOptions,
+    IntegrationListOptions,
+    IntegrationProductsOptions,
+} from "./resources/integrations.js";
 export type {
     ConversationGroupBy,
     ConversationTotalsOptions,
@@ -233,7 +237,11 @@ export type {
     FileProperties,
     FileType,
     Integration,
+    IntegrationCatalogPage,
+    IntegrationCatalogProduct,
+    IntegrationConfig,
     IntegrationConnectRequest,
+    IntegrationFormField,
     IntegrationPickerConfig,
     IntegrationProvider,
     IntegrationProviderName,
@@ -292,4 +300,5 @@ export type {
     Upload,
     WithAccount,
     WithPublication,
+    WooCommerceConnectRequest,
 } from "./types.js";

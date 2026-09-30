@@ -115,7 +115,130 @@ describe("integrations.connectLink", () => {
     });
 });
 
+/**
+ * WooCommerce: el enlace que NO es OAuth. La tienda va en la query porque el enlace apunta a SU
+ * WordPress, y reconectar con el botón es el mismo enlace con `id_integration`.
+ */
+describe("integrations.connectLink de una tienda", () => {
+    it("manda la url de la tienda y, para reconectar, el id de la integración", async () => {
+        const calls = api.mock("get", `${LIST}/woocommerce/connect_link`, {
+            url: "https://tienda.example.com/wc-auth/v1/authorize?app_name=PlanVortex&scope=read",
+        });
+        const pv = api.client();
+
+        const url = await pv.integrations.connectLink(ORG_ID, "woocommerce", {
+            url: "https://tienda.example.com",
+            id_integration: INTEGRATION_ID,
+        });
+
+        expect(calls[0]?.query).toEqual({
+            url: ["https://tienda.example.com"],
+            id_integration: [INTEGRATION_ID],
+        });
+        expect(url).toContain("/wc-auth/v1/authorize");
+    });
+
+    it("sin url ni id_integration no manda ninguna de las dos claves", async () => {
+        const calls = api.mock("get", `${LIST}/google_drive/connect_link`, {
+            url: "https://accounts.google.com/",
+        });
+        const pv = api.client();
+
+        await pv.integrations.connectLink(ORG_ID, "google_drive");
+
+        //Un `url=` vacío en el enlace de Drive no rompería nada hoy, pero sería mentir en la query
+        expect(calls[0]?.query).toEqual({});
+    });
+});
+
+describe("integrations.products", () => {
+    const PRODUCTS = `${ONE}/products`;
+
+    it("pide una página con cursor, búsqueda y límite, y la devuelve tal cual", async () => {
+        const calls = api.mock("get", PRODUCTS, {
+            items: [
+                {
+                    external_id: "68",
+                    name: "Taza de cerámica",
+                    price: "14,52 € IVA incluido",
+                    permalink: "https://tienda.example.com/producto/taza",
+                    available: true,
+                },
+                { external_id: "71", name: "Zapatillas", available: false },
+            ],
+            next_cursor: "p3",
+        });
+        const pv = api.client();
+
+        const page = await pv.integrations.products(ORG_ID, INTEGRATION_ID, {
+            cursor: "p2",
+            search: "taza",
+            limit: 20,
+        });
+
+        expect(calls[0]?.query).toEqual({ cursor: ["p2"], search: ["taza"], limit: ["20"] });
+        //El id es SIEMPRE una cadena, y lo agotado viene pero marcado
+        expect(page.items[0]?.external_id).toBe("68");
+        expect(page.items[1]?.available).toBe(false);
+        //El cursor es opaco: se devuelve tal cual llegó, sin interpretarlo
+        expect(page.next_cursor).toBe("p3");
+    });
+
+    it("la última página no trae next_cursor", async () => {
+        api.mock("get", PRODUCTS, { items: [] });
+        const pv = api.client();
+
+        const page = await pv.integrations.products(ORG_ID, INTEGRATION_ID);
+
+        expect(page.next_cursor).toBeUndefined();
+    });
+
+    it("un proveedor sin catálogo sale como IntegrationError con su código", async () => {
+        api.mock("get", PRODUCTS, { code: 2207, message: "This integration has no product catalog" }, 400);
+        const pv = api.client();
+
+        await expect(pv.integrations.products(ORG_ID, INTEGRATION_ID)).rejects.toMatchObject({
+            code: 2207,
+            family: "integration",
+        });
+    });
+});
+
 describe("integrations.connect", () => {
+    it("una tienda con claves manda el formulario plano, no un config", async () => {
+        const calls = api.mock("post", LIST, {
+            integration: {
+                ...integration,
+                provider: "woocommerce",
+                config: {
+                    url: "https://tienda.example.com",
+                    api_base: "wp-json",
+                    auth_mode: "basic",
+                    key_ending: "3f9a2c1",
+                    tax_location_missing: false,
+                },
+            },
+        });
+        const pv = api.client();
+
+        const store = await pv.integrations.connect(ORG_ID, {
+            provider: "woocommerce",
+            url: "https://tienda.example.com",
+            consumer_key: "ck_1",
+            consumer_secret: "cs_1",
+        });
+
+        expect(calls[0]?.body).toEqual({
+            provider: "woocommerce",
+            url: "https://tienda.example.com",
+            consumer_key: "ck_1",
+            consumer_secret: "cs_1",
+        });
+        //Lo que hay que ENSEÑAR de una tienda: qué clave borrar al desconectar, y si sus precios valen
+        expect(store.config.key_ending).toBe("3f9a2c1");
+        expect(store.config.tax_location_missing).toBe(false);
+    });
+
     it("con OAuth manda el proveedor y el code", async () => {
         const calls = api.mock("post", LIST, { integration: { ...integration, provider: "google_drive" } });
         const pv = api.client();

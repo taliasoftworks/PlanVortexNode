@@ -19,7 +19,16 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { account, accountId } from "../src/index.js";
+import {
+    account,
+    accountId,
+    messageContact,
+    messageContactId,
+    messageFileIds,
+    messageFiles,
+    publication,
+    publicationId,
+} from "../src/index.js";
 import type {
     Account,
     AiPlan,
@@ -28,6 +37,7 @@ import type {
     AiPlanSourceInput,
     Comment,
     CommentNetwork,
+    Message,
     OpenApiComponents,
     Paginated,
     PlannerTemplate,
@@ -103,10 +113,11 @@ describe("el paquete OpenAPI commiteado", () => {
      * la 135 son `archive` y `unarchive` de un plan, que son dos rutas y no un cuerpo con un
      * booleano. La 136 es `POST /clients/{id}/apps/{id}/secret`, rotar el secreto de una app, que
      * llego al spec antes que a este paquete; y la 137, `GET .../ai_plans/results`. La 138 y la
-     * 139 son los tableros de Pinterest: la lista de destinos de una cuenta y el detalle de uno.
+     * 139 son los tableros de Pinterest: la lista de destinos de una cuenta y el detalle de uno. La
+     * 140, `GET .../integrations/{id}/products`, el catalogo de una tienda WooCommerce conectada.
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(139);
+        expect(operations(bundle.paths)).toHaveLength(140);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 
@@ -266,6 +277,35 @@ describe("los tipos publicos", () => {
         expect(account(listada)).toBeUndefined();
         expect(account(leida)).toEqual(cuenta);
     });
+
+    /**
+     * Lo mismo con `id_publication`, que ademas puede FALTAR: la resena de una ficha de Google
+     * Business y el post que no salio de PlanVortex no tienen publicacion detras.
+     */
+    it("admiten `id_publication` poblada, como cadena o ausente", () => {
+        expect(publicationId({ id_publication: publicacion._id })).toBe(publicacion._id);
+        expect(publicationId({ id_publication: publicacion })).toBe(publicacion._id);
+        expect(publicationId({})).toBeUndefined();
+        expect(publication({ id_publication: publicacion._id })).toBeUndefined();
+        expect(publication({ id_publication: publicacion })).toEqual(publicacion);
+        expect(publication({})).toBeUndefined();
+    });
+
+    it("no inventan contacto ni ficheros en un mensaje que no los trae", () => {
+        const vacio = { message_options: {} } as Pick<Message, "message_options">;
+        const fichero = { _id: "66d04a6a427f4c43b9d97f70" } as Upload;
+        const mixto = { message_options: { files: ["66d04a6a427f4c43b9d97f71", fichero] } } as Pick<
+            Message,
+            "message_options"
+        >;
+
+        expect(messageContactId({})).toBeUndefined();
+        expect(messageContact({})).toBeUndefined();
+        expect(messageFiles(vacio)).toEqual([]);
+        expect(messageFileIds(vacio)).toEqual([]);
+        expect(messageFiles(mixto)).toEqual([fichero]);
+        expect(messageFileIds(mixto)).toEqual(["66d04a6a427f4c43b9d97f71", fichero._id]);
+    });
 });
 
 /**
@@ -365,7 +405,9 @@ describe("la decimocuarta red publica y no comenta", () => {
         };
 
         expect(pin.destination?.id).toBe(plan.destinations?.[0]?.destination.id);
-        expectTypeOf<NonNullable<PublicationInput["destination"]>["id"]>().toEqualTypeOf<string | undefined>();
+        expectTypeOf<NonNullable<PublicationInput["destination"]>["id"]>().toEqualTypeOf<
+            string | undefined
+        >();
     });
 });
 
@@ -441,8 +483,8 @@ describe("las plantillas del planificador", () => {
         //`max` y `min` van en las unidades del campo: caracteres, elementos, o DIAS en una fecha.
         expectTypeOf<PlannerTemplateField>().toHaveProperty("max");
         expectTypeOf<PlannerTemplateField>().toHaveProperty("min");
-        expectTypeOf<PlannerTemplateFieldType>().extract<"uploads_with_description">().toEqualTypeOf<
-            "uploads_with_description"
-        >();
+        expectTypeOf<PlannerTemplateFieldType>()
+            .extract<"uploads_with_description">()
+            .toEqualTypeOf<"uploads_with_description">();
     });
 });

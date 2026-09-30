@@ -204,6 +204,10 @@ export type PlannerTemplateName = OpenEnum<NonNullable<Schemas["CatalogPlannerTe
  * Y `regenerate` es por plantilla: la que no genero la imagen tampoco puede regenerarla. Ofrecer
  * ese boton igualmente es cobrarle al usuario 70 creditos por sustituir su propia foto por una
  * inventada.
+ *
+ * `unsupported_networks` son las redes cuyas cuentas no caben en un plan de esa plantilla (2120):
+ * filtra con eso las cuentas que ofreces, en vez de dejar elegir una de YouTube para una semana de
+ * fotos de producto.
  */
 export type PlannerTemplate = Schemas["CatalogPlannerTemplate"];
 
@@ -742,31 +746,90 @@ export type ProductCatalogInput = Schemas["ProductsProductCatalogInput"];
 
 /**
  * Una conexion de una ORGANIZACION con una herramienta de la que se trae material: Google Drive,
- * un feed RSS.
+ * un feed RSS, una tienda WooCommerce.
  *
  * No confundir con una **app** ({@link ClientApp}), que es el acceso al API de PlanVortex. Son dos
  * cosas distintas que media web ha llamado igual.
  *
  * Las credenciales no salen nunca: para saber si la conexion esta viva esta `connected`, y el
- * motivo cuando no lo esta, en `error_code`.
+ * motivo cuando no lo esta, en `error_code`. **El 2219 no es un fallo**: una tienda conectada con el
+ * boton se esta comprobando, unos segundos; si se queda ahi, hay que reconectarla.
  */
 export type Integration = Schemas["IntegrationsIntegration"];
 
-/** Que sabe hacer un proveedor y que campos lleva su formulario. Es lo que decide como conectar. */
+/**
+ * Que sabe hacer un proveedor y que campos lleva su formulario. Es lo que decide como conectar, y
+ * se ramifica por sus puertas, nunca por el nombre del proveedor:
+ *
+ *  - `requires_oauth`: hay un token detras (Google Drive). **Tener enlace no es ser OAuth.**
+ *  - `connect_link`: se conecta mandando al usuario a {@link IntegrationsResource.connectLink}.
+ *    Drive (su OAuth) y WooCommerce (el boton de aprobar de la tienda), que ademas pide antes lo que
+ *    diga `connect_link_fields` (la `url` de la tienda).
+ *  - `catalog`: tiene catalogo de productos ({@link IntegrationsResource.products}) y sirve de fuente
+ *    a la plantilla `from_catalog`.
+ */
 export type IntegrationProvider = Schemas["IntegrationsIntegrationProvider"];
+
+/**
+ * Un campo del formulario de un proveedor. **`secret` es una credencial** (la consumer secret de
+ * WooCommerce): se oculta, no se rellena nunca al editar y va con `autocomplete="new-password"`, o
+ * el gestor de contrasenas del navegador la rellena con la contrasena de PlanVortex del usuario y la
+ * tienda contesta 2211.
+ */
+export type IntegrationFormField = Schemas["IntegrationsIntegrationFormField"];
 
 /** Un proveedor soportado. Abierto porque la lista crece. */
 export type IntegrationProviderName = OpenEnum<Schemas["IntegrationsIntegrationProviderName"]>;
 
-/** La configuracion de un feed RSS. En Google Drive el `config` es un objeto vacio. */
+/** La configuracion de un feed RSS: lo que se puede mandar en el `config` de un `update`. */
 export type RssConfig = Schemas["IntegrationsRssConfig"];
 
 /**
- * Lo que se manda para conectar o reconectar. Son dos formas y las distingue `provider`: con OAuth
- * viaja el `code`, y sin el, el formulario de `config_fields`.
+ * Lo que guarda el `config` de una integracion, segun el proveedor. Google Drive: nada. RSS: el feed.
+ * WooCommerce: como llegar a la tienda, que lo detecta el servidor al conectar. Nunca un secreto.
+ *
+ * Dos claves de la tienda que hay que ENSENAR, no solo guardar:
+ *
+ *  - **`key_ending`**: desconectar no revoca la clave (WooCommerce no deja que una app borre la
+ *    suya), y es lo que dice cual borrar en WooCommerce → Ajustes → Avanzado → API REST.
+ *  - **`tax_location_missing`**: la API de esa tienda da los precios SIN impuesto con la etiqueta de
+ *    "IVA incluido", asi que sus productos con impuesto vienen sin `price`. Se arregla en su
+ *    WordPress (ubicacion del cliente por defecto → pais de la tienda) y reconectando.
+ */
+export type IntegrationConfig = Schemas["IntegrationsIntegrationConfig"];
+
+/**
+ * Conectar una tienda con claves creadas a mano (con permiso de **lectura**). El boton
+ * ({@link IntegrationsResource.connectLink}) hace lo mismo sin copiar ninguna clave, y es mejor
+ * siempre que la tienda lo permita: con enlaces permanentes "simples" no puede (2216).
+ */
+export type WooCommerceConnectRequest = Schemas["IntegrationsWooCommerceConnectRequest"];
+
+/**
+ * Lo que se manda para conectar o reconectar. Tres formas y las distingue `provider`: con OAuth
+ * viaja el `code`; sin el, el formulario de `config_fields` PLANO (el feed, o la tienda con sus
+ * claves).
  */
 export type IntegrationConnectRequest =
-    Schemas["IntegrationsGoogleDriveConnectRequest"] | Schemas["IntegrationsRssConnectRequest"];
+    | Schemas["IntegrationsGoogleDriveConnectRequest"]
+    | Schemas["IntegrationsRssConnectRequest"]
+    | WooCommerceConnectRequest;
+
+/**
+ * Un producto de una tienda conectada, ya normalizado: la misma forma sea cual sea la tienda.
+ *
+ * `external_id` es SIEMPRE una cadena, y es lo que va en `source.products` de un plan
+ * `from_catalog`. `price` es TEXTO para copiar literal, como lo ensena la tienda (impuesto, simbolo,
+ * rango): nunca un numero sobre el que hacer cuentas, y ausente es "sin precio". **`available: false`
+ * es lo agotado**: se ensena marcado pero no se deja elegir, y un plan con uno se rechaza (2112).
+ */
+export type IntegrationCatalogProduct = Schemas["IntegrationsIntegrationCatalogProduct"];
+
+/**
+ * Una pagina del catalogo de una tienda. Sin `next_cursor`, es la ultima. El cursor es OPACO: se
+ * devuelve tal cual llego y no se construye ni se interpreta nunca.
+ */
+export type IntegrationCatalogPage = Schemas["IntegrationsIntegrationCatalogPage"];
 
 /** Lo que se puede cambiar de una integracion ya conectada. */
 export type IntegrationUpdate = Operations["updateIntegration"]["requestBody"]["content"]["application/json"];
@@ -825,6 +888,11 @@ export type AiPlanOptionsInput = Schemas["AiPlansAiPlanOptionsInput"];
  *
  * Y `options.link` es el enlace de destino de todos los pins del plan: se valida al crear (994) y
  * se tira si el plan no tiene ninguna red con `link`.
+ *
+ * **No toda red cabe en toda plantilla.** Las de `unsupported_networks` de la plantilla
+ * ({@link PlannerTemplate}) se quedan fuera de `accounts`, o el plan se rechaza con el **2120**
+ * antes de leer nada ni cobrar nada: hoy es YouTube en `from_images` y `from_catalog`, donde toda
+ * publicacion es la foto de su fuente y YouTube solo sube video.
  */
 export type AiPlanCreateRequest = Schemas["AiPlansAiPlanCreateRequest"];
 
@@ -844,14 +912,15 @@ export type AiPlanDestination = Schemas["AiPlansAiPlanDestination"];
  * | `standard` | ninguno: no tiene fuente |
  * | `from_images` | `images` |
  * | `from_text` | `url` **o** `text` |
- * | `from_catalog` | `id_account_catalog`, `product_catalog_id`, `products` |
+ * | `from_catalog` | `id_account_catalog` + `product_catalog_id` (un catalogo de Meta) **o** `id_integration_catalog` (una tienda conectada), y `products` |
  * | `campaign` | `event_name`, `event_date` |
  *
- * Se valida al CREAR el plan, no al generarlo: el articulo se descarga, el catalogo se lee en vivo
- * y las fotos de los productos se copian, asi que una fuente que no funciona falla mientras el
- * usuario sigue delante. Dos trampas que el tipo no puede decir: `text` GANA sobre `url` cuando
- * llegan los dos —pegar el texto es lo que hace quien no consiguio que se descargara—, y
- * `event_date` es un DIA DE CALENDARIO (`YYYY-MM-DD`), nunca un instante ISO.
+ * Se valida al CREAR el plan, no al generarlo: el articulo se descarga, el catalogo o la tienda se
+ * leen en vivo y las fotos de los productos se copian, asi que una fuente que no funciona falla
+ * mientras el usuario sigue delante. Tres trampas que el tipo no puede decir: `text` GANA sobre
+ * `url` cuando llegan los dos —pegar el texto es lo que hace quien no consiguio que se descargara—,
+ * `event_date` es un DIA DE CALENDARIO (`YYYY-MM-DD`), nunca un instante ISO, y las dos fuentes de
+ * `from_catalog` son EXCLUYENTES: mandar las dos es un 2112, no una mezcla.
  */
 export type AiPlanSourceInput = Schemas["AiPlansAiPlanSourceInput"];
 
@@ -867,11 +936,12 @@ export type AiPlanSource = Schemas["AiPlansAiPlanSource"];
 /**
  * Un producto del catalogo, copiado al crear el plan.
  *
- * `price` viene **exactamente como lo devolvio la red** (`"9,99 €"`) y no se convierte nunca: el
- * mismo campo es un numero en otros caminos de la API de Meta y no hay forma de saber si son
- * unidades o centimos. Dividir por 100 "por si acaso" es como se anuncia un producto de 10 € a
- * 0,10 €. Y `id_upload` es la foto ya copiada a un fichero de la organizacion, porque la URL del
- * CDN de la red caduca.
+ * `price` viene **exactamente como lo dio la fuente** (`"9,99 €"` de Meta, `"14,52 € IVA incluido"`
+ * de una tienda) y no se convierte nunca: el mismo campo es un numero en otros caminos de la API de
+ * Meta y no hay forma de saber si son unidades o centimos. Dividir por 100 "por si acaso" es como se
+ * anuncia un producto de 10 € a 0,10 €. `permalink` es la ficha publica del producto: el texto la
+ * pone donde un enlace se puede pulsar, y un pin lleva ahi si el plan no trae su `options.link`. Y
+ * `id_upload` es la foto ya copiada a un fichero de la organizacion, porque la URL del catalogo caduca.
  */
 export type AiPlanSourceProduct = Schemas["AiPlansAiPlanSourceProduct"];
 
