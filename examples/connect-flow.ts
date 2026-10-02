@@ -29,6 +29,18 @@ import type { SocialNetwork } from "../src/index.js";
 const PORT = Number(process.env.PORT ?? 3211);
 /** Cambia esto si lo publicas en otro sitio: tiene que coincidir con el `redirect_urls` de la app. */
 const RETURN_URL = process.env.PLANVORTEX_RETURN_URL ?? `http://localhost:${PORT}/listo`;
+/**
+ * La vuelta del camino en el que el selector de cuentas lo pones tú. También tiene que estar en los
+ * `redirect_urls` de la app.
+ */
+const PICK_URL = process.env.PLANVORTEX_PICK_URL ?? `http://localhost:${PORT}/elegir`;
+
+/**
+ * Las sesiones de conexión que ha empezado ESTE proceso. En una integración de verdad va en la
+ * sesión de tu usuario: es lo que comparas con el `connect_session` que vuelve, para que una sesión
+ * que empezó otro no acabe en su navegador.
+ */
+const startedSessions = new Set<string>();
 
 const pv = new PlanVortex({
     //Si no se pasan, salen de PLANVORTEX_CLIENT_ID y PLANVORTEX_CLIENT_SECRET.
@@ -100,23 +112,83 @@ async function route(url: URL): Promise<string> {
             console.log(`Token temporal emitido, caduca ${connect.expires_at}`);
             return `REDIRECT:${connect.url}`;
         }
-        //LA VARIANTE SIN PANEL — el mismo token, usado desde aquí para pintar los botones propios.
-        //El usuario va a la red desde tu interfaz; la vuelta sigue aterrizando en PlanVortex.
+        //LOS BOTONES DE RED LOS PONES TÚ: un token por botón, atado a su red, y se manda al usuario a
+        //su `url`. NO se le manda directamente al enlace de `connectLinks()`: la red lo devuelve a
+        //PlanVortex, y esa vuelta sólo encuentra el token si entró por `connect.url`. Aquí
+        //`connectLinks()` sirve para saber QUÉ redes se pueden conectar ahora mismo.
         case "/enlaces": {
             const idOrganization = await resolveOrganization();
-            const { token } = await pv.organizations.createConnectToken(idOrganization, {
-                redirect_uri: RETURN_URL,
-            });
-            const guest = pv.asTemporalToken(token);
-            const links = await guest.accounts.connectLinks(idOrganization);
+            const { token } = await pv.organizations.createConnectToken(idOrganization);
+            const links = await pv.asTemporalToken(token).accounts.connectLinks(idOrganization);
             return page(
                 "Elige tú la red",
-                `<p>Estos enlaces salen de <code>connectLinks()</code> con el token temporal. Una red que
-                  no aparezca es una red que esta organización no puede conectar ahora mismo — Discord
-                  sin sus credenciales de bot, por ejemplo.</p>
+                `<p>Una red que no aparezca es una red que esta organización no puede conectar ahora
+                  mismo (Discord sin sus credenciales de bot, por ejemplo). Cada botón pide su propio
+                  token atado a esa red.</p>
                  <ul>${links
-                     .map((link) => `<li><a href="${link.link}">${link.social_network}</a></li>`)
+                     .map((link) => `<li><a href="/conectar?red=${link.social_network}">${link.social_network}</a></li>`)
                      .join("")}</ul>
+                 <p><a href="/">Volver</a></p>`,
+            );
+        }
+        //EL SELECTOR DE CUENTAS LO PONES TÚ: `account_selection: "integrator"`. La `url` es la
+        //página de autorización de la red, y la vuelta aterriza en PICK_URL con una sesión de
+        //conexión sin pasar por ninguna pantalla de PlanVortex. Exige la red y el `redirect_uri`.
+        case "/conectar-propio": {
+            const connect = await pv.organizations.createConnectToken(await resolveOrganization(), {
+                social_network: (url.searchParams.get("red") ?? "facebook") as SocialNetwork,
+                redirect_uri: PICK_URL,
+                account_selection: "integrator",
+            });
+            if (connect.connect_session) {
+                startedSessions.add(connect.connect_session);
+            }
+            return `REDIRECT:${connect.url}`;
+        }
+        case "/elegir": {
+            const idSession = url.searchParams.get("connect_session") ?? "";
+            if (!startedSessions.has(idSession)) {
+                return page("Esta sesión no es tuya", `<p>No la empezó este proceso.</p><p><a href="/">Volver</a></p>`);
+            }
+            const error = url.searchParams.get("error");
+            if (error) {
+                return page(
+                    "No se ha terminado",
+                    `<p><code>${error}</code> ${url.searchParams.get("error_code") ?? ""}. La sesión sigue
+                      abierta: se puede volver a intentar.</p><p><a href="/">Volver</a></p>`,
+                );
+            }
+            const session = await pv.accounts.getConnectSession(await resolveOrganization(), idSession);
+            return page(
+                "Elige las cuentas",
+                `<p>Caben ${session.accounts_limit - session.accounts_used} más en el plan.</p>
+                 <form action="/confirmar">
+                   <input type="hidden" name="connect_session" value="${session._id}">
+                   ${session.accounts
+                       .map(
+                           (account) =>
+                               `<label><input type="checkbox" name="cuenta" value="${account._id}"${account.already_enabled ? " checked" : ""}>
+                                ${account.name}${account.already_enabled ? " (ya estaba conectada)" : ""}</label><br>`,
+                       )
+                       .join("")}
+                   <button>Conectar las elegidas</button>
+                 </form>`,
+            );
+        }
+        case "/confirmar": {
+            const idSession = url.searchParams.get("connect_session") ?? "";
+            if (!startedSessions.has(idSession)) {
+                return page("Esta sesión no es tuya", `<p><a href="/">Volver</a></p>`);
+            }
+            const enabled = await pv.accounts.confirmConnectSession(
+                await resolveOrganization(),
+                idSession,
+                url.searchParams.getAll("cuenta"),
+            );
+            startedSessions.delete(idSession);
+            return page(
+                "Ya está",
+                `<p>Conectadas: ${enabled.map((account) => account.name).join(", ") || "ninguna"}.</p>
                  <p><a href="/">Volver</a></p>`,
             );
         }
@@ -147,11 +219,14 @@ function home(): string {
     return page(
         "Conectar una cuenta social",
         `<p>Esto es lo que vería un usuario de tu aplicación. El <code>client_secret</code> no sale de
-           este proceso: lo que viaja con él es un token de una hora, atado a una organización, que
-           sólo sirve para crear cuentas.</p>
+           este proceso: lo que viaja con él es un token de quince minutos, atado a una organización,
+           que sólo sirve para crear cuentas.</p>
          <p><a href="/conectar">Conectar una cuenta</a> — el camino alojado, y el que quieres.</p>
          <p><a href="/conectar?red=instagram">Conectar Instagram</a> — igual, pero sin preguntar la red.</p>
-         <p><a href="/enlaces">Ver los enlaces sueltos</a> — la variante en la que la interfaz la pones tú.</p>
+         <p><a href="/enlaces">Los botones de red los pongo yo</a>: un token por red.</p>
+         <p><a href="/conectar-propio?red=facebook">Las cuentas las elijo yo</a>: el selector de cuentas
+           es tuyo (<code>account_selection: "integrator"</code>). Necesita <code>${PICK_URL}</code> en
+           los <code>redirect_urls</code> de la app.</p>
          <p style="color:#666">La vuelta está configurada a <code>${RETURN_URL}</code>. Si el primer
            paso contesta el error 532, es que esa URL no está en los <code>redirect_urls</code> de la
            app.</p>`,

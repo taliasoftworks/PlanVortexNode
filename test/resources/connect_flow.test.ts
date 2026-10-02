@@ -230,3 +230,88 @@ describe("habilitar la cuenta", () => {
         expect((error as PlanVortexError).code).toBe(706);
     });
 });
+
+/**
+ * El selector de cuentas lo pone el integrador (`account_selection: "integrator"`, fase 20 de
+ * cambios-planvortex.md en el Server). Lo que fija esto es la forma del contrato: el modo viaja en
+ * la query del token, la sesión se lee y se confirma con las credenciales de la APP —no con el token
+ * temporal, que se queda en el navegador— y la confirmación devuelve las cuentas habilitadas.
+ */
+describe("el selector de cuentas del integrador", () => {
+    const SESSION_ID = "665f1c2e8b3a4d0012a1b2c9";
+
+    it("pide el modo en la query del token y devuelve el id de la sesión", async () => {
+        const calls = api.mock("get", `/organizations/${ORG_ID}/temporal_connect_token`, {
+            url: "https://www.facebook.com/v23.0/dialog/oauth?client_id=1&state=pvcs_x",
+            token: TEMPORAL_TOKEN,
+            expires_at: "2026-10-02T13:00:00.000Z",
+            connect_session: SESSION_ID,
+        });
+        const pv = api.client();
+
+        const connect = await pv.organizations.createConnectToken(ORG_ID, {
+            social_network: "facebook",
+            redirect_uri: "https://mi-app.example/vuelta",
+            account_selection: "integrator",
+        });
+
+        expect(calls[0]?.query).toEqual({
+            social_network: ["facebook"],
+            redirect_uri: ["https://mi-app.example/vuelta"],
+            account_selection: ["integrator"],
+        });
+        expect(connect.connect_session).toBe(SESSION_ID);
+    });
+
+    it("lee la sesión con las credenciales de la app y la desenvuelve", async () => {
+        const calls = api.mock("get", `/organizations/${ORG_ID}/connect_sessions/${SESSION_ID}`, {
+            connect_session: {
+                _id: SESSION_ID,
+                social_network: "facebook",
+                status: "returned",
+                accounts: [{ ...account, deleted: true, already_enabled: false }],
+                accounts_used: 3,
+                accounts_limit: 10,
+                expires_at: "2026-10-02T13:30:00.000Z",
+            },
+        });
+        const pv = api.client();
+
+        const session = await pv.accounts.getConnectSession(ORG_ID, SESSION_ID);
+
+        expect(session.status).toBe("returned");
+        expect(session.accounts[0]?.already_enabled).toBe(false);
+        expect(session.accounts_limit - session.accounts_used).toBe(7);
+        //Un token de app, no el temporal: la elección es del integrador, no del navegador.
+        expect(calls[0]?.headers.get("authorization")).not.toBe(`Bearer ${TEMPORAL_TOKEN}`);
+    });
+
+    it("confirma mandando los ids y devuelve las cuentas habilitadas", async () => {
+        const calls = api.mock("post", `/organizations/${ORG_ID}/connect_sessions/${SESSION_ID}/confirm`, {
+            accounts: [{ ...account, deleted: false }],
+        });
+        const pv = api.client();
+
+        const enabled = await pv.accounts.confirmConnectSession(ORG_ID, SESSION_ID, [ACCOUNT_ID]);
+
+        expect(calls[0]?.body).toEqual({ accounts: [ACCOUNT_ID] });
+        expect(enabled.map((e) => e._id)).toEqual([ACCOUNT_ID]);
+    });
+
+    /** O todas o ninguna: el 706 llega como excepción, con el número que hay que enseñar. */
+    it("si no caben, el 706 llega como excepción con limit, used y requested", async () => {
+        api.mock(
+            "post",
+            `/organizations/${ORG_ID}/connect_sessions/${SESSION_ID}/confirm`,
+            { code: 706, message: "Max accounts reached", data: { limit: 10, used: 9, requested: 2 } },
+            400,
+        );
+        const pv = api.client();
+
+        const error = await pv.accounts.confirmConnectSession(ORG_ID, SESSION_ID, [ACCOUNT_ID, "otra"]).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(AccountError);
+        expect((error as PlanVortexError).code).toBe(706);
+        expect((error as PlanVortexError).data).toEqual({ limit: 10, used: 9, requested: 2 });
+    });
+});

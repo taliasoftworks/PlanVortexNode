@@ -31,6 +31,7 @@ import {
 } from "../src/index.js";
 import type {
     Account,
+    AiImageOrigin,
     AiPlan,
     AiPlanCreateRequest,
     AiPlanNotice,
@@ -45,6 +46,7 @@ import type {
     PlannerTemplateFieldType,
     PlannerTemplateName,
     Publication,
+    PublicationAiGenerated,
     PublicationInput,
     PublicationState,
     SocialAuthorizationMethod,
@@ -115,9 +117,11 @@ describe("el paquete OpenAPI commiteado", () => {
      * llego al spec antes que a este paquete; y la 137, `GET .../ai_plans/results`. La 138 y la
      * 139 son los tableros de Pinterest: la lista de destinos de una cuenta y el detalle de uno. La
      * 140, `GET .../integrations/{id}/products`, el catalogo de una tienda WooCommerce conectada.
+     * La 141 y la 142 son leer y confirmar una sesion de conexion: el selector de cuentas lo pone el
+     * integrador (`account_selection: "integrator"`).
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(140);
+        expect(operations(bundle.paths)).toHaveLength(142);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 
@@ -221,6 +225,24 @@ describe("los tipos publicos", () => {
         //Google Business: una resena cuelga de la ficha, no de una publicacion nuestra.
         expectTypeOf<Comment>().toHaveProperty("publication_external_id");
         expectTypeOf<Comment>().toHaveProperty("rating");
+    });
+
+    /**
+     * La marca de IA (fase 16 del servidor, AI Act art. 50): es la mitad del valor para quien
+     * integra, porque con ella pinta su propia etiqueta. Opcional en los dos: ausente = nada de IA.
+     */
+    it("dicen que es de IA, en la imagen y en la publicacion", () => {
+        const origen: AiImageOrigin = {
+            provider: "openrouter",
+            model: "google/gemini-3.1-flash-image",
+            generated_at: "2026-09-30T09:00:00.000Z",
+        };
+        const marcada: PublicationAiGenerated = { text: true, image: false };
+
+        expectTypeOf<Upload["ai_generated"]>().toEqualTypeOf<AiImageOrigin | undefined>();
+        expectTypeOf<Publication["ai_generated"]>().toEqualTypeOf<PublicationAiGenerated | undefined>();
+        expect({ ...publicacion, ai_generated: marcada }.ai_generated.text).toBe(true);
+        expect(origen.provider).toBe("openrouter");
     });
 
     /** El `{data, total}` de la libreria, que es igual en todos los dominios */

@@ -429,6 +429,34 @@ export interface EnableResult {
 }
 
 /**
+ * Quien ensena la pantalla de elegir cuentas al volver de la red. `planvortex` (lo de siempre) o
+ * `integrator`: el usuario vuelve a tu `redirect_uri` con una sesion de conexion y el selector lo
+ * pones tu. Ver {@link ConnectSession}.
+ */
+export type AccountSelection = "planvortex" | "integrator";
+
+/**
+ * Una conexion en el modo `account_selection: "integrator"`: lo que autorizo tu usuario, para que
+ * tu app ensene su propio selector y confirme las elegidas con
+ * `accounts.confirmConnectSession()`.
+ *
+ * Solo la puede leer la app que emitio el token. `accounts` son las de ESTA autorizacion, nunca
+ * otras pendientes de la organizacion; `already_enabled` marca una reconexion, que no gasta plaza;
+ * y `accounts_used`/`accounts_limit` son el contador del plan. Una sesion `returned` vive media
+ * hora.
+ */
+export type ConnectSession = Override<
+    Schemas["AccountsConnectSession"],
+    {
+        social_network: SocialNetwork;
+        accounts: ConnectSessionAccount[];
+    }
+>;
+
+/** Una cuenta de una {@link ConnectSession}: una {@link Account} mas `already_enabled`. */
+export type ConnectSessionAccount = Account & { already_enabled: boolean };
+
+/**
  * Un fichero de la biblioteca de la organizacion.
  *
  * CUIDADO CON `public_path`: es una URL **firmada y temporal**, no un enlace permanente. Se
@@ -446,6 +474,27 @@ export type Upload = Override<
 
 /** Ancho, alto, duracion y tamano de un fichero, mas en que redes cabe **por su recorte**. */
 export type FileProperties = Schemas["FileProperties"];
+
+/**
+ * De que modelo salio una imagen: el `ai_generated` de un {@link Upload}. **Solo lo llevan las
+ * imagenes que genero la IA** —nunca una foto subida, ni la de un producto de una tienda— y no se
+ * puede editar.
+ *
+ * Es lo que necesitas para cumplir TU parte del AI Act: el articulo 50.4 obliga a quien publica a
+ * avisar a su audiencia cuando una imagen generada puede pasar por real, y con este campo pintas la
+ * etiqueta en tu producto. La marca en el propio fichero (C2PA, IPTC y SynthID con el modelo por
+ * defecto) la pone PlanVortex; el C2PA no sobrevive a un recorte, el IPTC si.
+ */
+export type AiImageOrigin = Schemas["AiImageOrigin"];
+
+/**
+ * Que parte de una {@link Publication} genero la IA. **Ausente = nada.**
+ *
+ * `text` lo sella el planificador al crear el borrador y no cambia aunque el texto se reescriba:
+ * dice de donde salio, no quien lo reviso. `image` se recalcula con los ficheros cada vez que se
+ * guarda: cambiar la imagen generada por una foto propia lo apaga.
+ */
+export type PublicationAiGenerated = Schemas["PublicationAiGenerated"];
 
 /**
  * Una publicacion: programada, enviada o fallida.

@@ -25,8 +25,9 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
     //Hasta 548, no 544: la API publica se abrio a todos los planes y trajo dos codigos nuevos
     //—545 (ritmo por plan, que sale 429) y 546 (correo sin verificar al crear una app)—, y las
     //apps dos mas —547 (el identificador de una app no se cambia) y 548 (fallo al rotar el
-    //secreto, que es justo lo que estreno `apps.rotateSecret`)—.
-    { from: 500, to: 548, family: "auth" },
+    //secreto, que es justo lo que estreno `apps.rotateSecret`)—. Y hasta 554 desde que el selector
+    //de cuentas puede ponerlo el integrador (549-554: el modo y su sesion de conexion).
+    { from: 500, to: 554, family: "auth" },
     { from: 601, to: 612, family: "user" },
     //716: la sesion de Bluesky la esta renovando otro proceso. Es temporal, y fuera de familia no
     //habia forma de saber que la respuesta es reintentar.
@@ -121,7 +122,7 @@ export class PlanVortexError extends Error {
     }
 }
 
-/** 500-548 — tokens, apps de cliente, permisos. Incluye el 501 y el 522, los de token caducado. */
+/** 500-554 — tokens, apps de cliente, permisos, sesiones de conexion. Incluye el 501 y el 522, los de token caducado. */
 export class AuthError extends PlanVortexError {}
 /** 601-612 — el usuario final. */
 export class UserError extends PlanVortexError {}

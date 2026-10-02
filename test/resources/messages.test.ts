@@ -134,6 +134,31 @@ describe("messages.send", () => {
         });
     });
 
+    it("las variables de la plantilla viajan en orden en template_parameters", async () => {
+        // Es lo que convierte una plantilla aprobada en un recordatorio con el nombre y la hora.
+        // El orden es el contrato: el primero rellena {{1}}, el segundo {{2}}.
+        const calls = api.mock("post", THREAD, { message });
+        const pv = api.client();
+
+        await pv.messages.send(ORG_ID, ACCOUNT_ID, CONTACT_ID, {
+            message_type: "template_message",
+            message_options: {
+                template_name: "recordatorio_cita",
+                template_language: "es",
+                template_parameters: ["María", "jueves 2 de octubre", "17:00"],
+            },
+        });
+
+        expect(calls[0]?.body).toEqual({
+            message_type: "template_message",
+            message_options: {
+                template_name: "recordatorio_cita",
+                template_language: "es",
+                template_parameters: ["María", "jueves 2 de octubre", "17:00"],
+            },
+        });
+    });
+
     /**
      * El endpoint no leía `in_response_external_id` del cuerpo hasta el 2026-08-24, así que los dos
      * tipos que lo necesitan no se podían mandar por la API pública. Lo que se fija aquí es que el

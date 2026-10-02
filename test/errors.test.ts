@@ -87,6 +87,9 @@ describe("la clasificacion de errores", () => {
     it("clasifica los codigos de apps y el de la sesion de Bluesky", () => {
         expect(apiError(547)).toBeInstanceOf(AuthError);
         expect(apiError(548)).toBeInstanceOf(AuthError);
+        //549-554: el selector de cuentas del integrador y su sesion de conexion (551, 552, 553).
+        expect(apiError(551)).toBeInstanceOf(AuthError);
+        expect(apiError(554)).toBeInstanceOf(AuthError);
         expect(apiError(716)).toBeInstanceOf(AccountError);
     });
 

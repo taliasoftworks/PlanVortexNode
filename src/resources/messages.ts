@@ -179,6 +179,22 @@ export class MessagesResource extends Resource {
      * En Facebook e Instagram sólo se admite **un** adjunto por mensaje (error 1509), y en WhatsApp
      * fuera de la ventana de 24 horas sólo se admite una plantilla.
      *
+     * Si el cuerpo de la plantilla tiene variables, sus valores van en `template_parameters`, en
+     * orden: el primero rellena `{{1}}`, el segundo `{{2}}`. Sin ellos WhatsApp rechaza la plantilla.
+     * Un valor vacío, con saltos de línea, tabuladores o más de cuatro espacios seguidos es un 1511
+     * con `data.index` apuntando al que falla. Sólo variables posicionales del cuerpo:
+     *
+     * ```ts
+     * await pv.messages.send(orgId, accountId, contactId, {
+     *     message_type: "template_message",
+     *     message_options: {
+     *         template_name: "recordatorio_cita",
+     *         template_language: "es",
+     *         template_parameters: ["María", "jueves 2 de octubre", "17:00"],
+     *     },
+     * });
+     * ```
+     *
      * `comment_message` y `publication_message` exigen `in_response_external_id`: el identificador
      * EN LA RED de lo que se responde —el `external_id` de un comentario, el `external_identifier`
      * de una publicación—, nunca un `_id` de PlanVortex, y error 1510 si falta. El endpoint no lo

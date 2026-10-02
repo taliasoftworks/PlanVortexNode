@@ -237,8 +237,8 @@ rather than the 1502 you would expect, so check the account's network first.
 
 **An app cannot connect one.** Authorizing Instagram is an OAuth flow with a person in front of it,
 so app credentials are refused (error 519) by every endpoint of this flow. What an app does instead
-is mint a one-hour token, hand it to its user, and wait for them to come back. Your `client_secret`
-never leaves your server.
+is mint a fifteen-minute token, hand it to its user, and wait for them to come back. Your
+`client_secret` never leaves your server.
 
 ```ts
 // On your server, when your user asks to connect a social account:
@@ -250,14 +250,13 @@ const connect = await pv.organizations.createConnectToken(orgId, {
 response.redirect(connect.url); // PlanVortex takes over, and returns them to your redirect_uri
 ```
 
-`connect.url` is the hosted path, and the one you want: PlanVortex asks which network, runs the
-OAuth, and shows the person which accounts to enable. `connect.token` is the same credential on its
-own, for when you would rather render the picker yourself:
+`connect.url` is the hosted path: PlanVortex asks which network, runs the OAuth, and shows the
+person which accounts to enable.
 
-```ts
-const guest = pv.asTemporalToken(connect.token);
-const links = await guest.accounts.connectLinks(orgId); // one authorization URL per network
-```
+**To show your own network buttons**, mint one token per button with `social_network` and redirect
+to its `url`: the person goes straight to that network. Do not build the buttons from
+`connectLinks()` with the bare token. The network sends the person back to PlanVortex, and that
+return only finds the token when they came in through `connect.url`.
 
 Three things that surprise everyone:
 
@@ -268,10 +267,46 @@ Three things that surprise everyone:
   registered in the network's own app settings, so it can never be a URL of yours. Where _your_ user
   ends up afterwards is the `redirect_uri` you passed to `createConnectToken`.
 - **A connected account is not an enabled account.** One authorization can produce several — a
-  Facebook user with four pages — and none of them takes a plan slot or publishes until
-  `accounts.enable()` is called on it. That is also the call that answers 706 when the plan is full.
+  Facebook user with four pages — and none of them takes a plan slot or publishes until it is
+  enabled. That is also the step that answers 706 when the plan is full.
 
-A complete, runnable version is in [examples/connect-flow.ts](examples/connect-flow.ts).
+### Your own account picker
+
+With `account_selection: "integrator"` the screen where the person picks which accounts to enable
+is yours. The `url` is the network's own authorization page, and when the person finishes they land
+on your `redirect_uri` with `?connect_session=…&social_network=…`, without seeing anything of
+PlanVortex on the way:
+
+```ts
+const connect = await pv.organizations.createConnectToken(orgId, {
+    social_network: "facebook", // required in this mode, the network buttons are yours too
+    redirect_uri: "https://your-app.example/pick",
+    account_selection: "integrator",
+});
+// Store connect.connect_session with your user's session, then send them off:
+response.redirect(connect.url);
+
+// Later, on https://your-app.example/pick?connect_session=…&social_network=facebook
+const session = await pv.accounts.getConnectSession(orgId, connectSession);
+// Show session.accounts. `accounts_limit - accounts_used` more fit in the plan, and an account
+// with `already_enabled: true` is a reconnection that takes no slot.
+const enabled = await pv.accounts.confirmConnectSession(orgId, session._id, chosenIds);
+```
+
+- **Compare the `connect_session` that comes back** with the one you stored. That is what stops a
+  session somebody else started from landing in your user's browser.
+- **If an `error` comes back with it**, the connection did not finish: `access_denied` when the
+  person cancelled, `no_accounts` when the network returned none, `connect_failed` together with
+  `error_code`. The session is still open, and the same link can be tried again.
+- **Confirming is all or nothing.** If the new accounts do not fit in the plan you get error 706
+  with `{ limit, used, requested }` and none is enabled. Send an empty list if they picked none.
+- **Only the app that minted the token can read the session**, and it lives thirty minutes once the
+  person is back. Anything else answers 551.
+- **Telegram cannot use this mode** (error 550): its link opens a chat that never comes back to the
+  browser. On WhatsApp the `url` is still a PlanVortex page with one button, because Meta's popup
+  only opens on our domain; the picker after it is yours.
+
+A complete, runnable version of both paths is in [examples/connect-flow.ts](examples/connect-flow.ts).
 
 ## Webhooks
 
@@ -368,7 +403,7 @@ if you would rather branch on `error.family`.
 
 | Codes                | What went wrong                                        | Class               |
 | -------------------- | ------------------------------------------------------ | ------------------- |
-| 500-548              | Authentication, tokens, permissions, client apps       | `AuthError`         |
+| 500-554              | Authentication, tokens, permissions, client apps       | `AuthError`         |
 | 601-612              | Users                                                  | `UserError`         |
 | 700-716              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
 | 800-810              | Files                                                  | `FileError`         |

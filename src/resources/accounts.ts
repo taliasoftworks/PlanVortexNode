@@ -22,6 +22,7 @@ import type {
     AccountMetrics,
     ConnectLink,
     ConnectResult,
+    ConnectSession,
     Destination,
     EnableResult,
     Paginated,
@@ -210,6 +211,54 @@ export class AccountsResource extends Resource {
         //`success: true` no se devuelve: un fallo llega como excepción, así que aquí sólo interesa
         //si el token temporal traía un sitio al que mandar al usuario después.
         return body.redirect_uri === undefined ? {} : { redirect_uri: body.redirect_uri };
+    }
+
+    /**
+     * Una sesión de conexión: lo que autorizó tu usuario cuando el token se emitió con
+     * `account_selection: "integrator"`. Es lo que pintas en TU selector de cuentas.
+     *
+     * El `idSession` es el `connect_session` que llega a tu `redirect_uri` (y el que te devolvió
+     * `createConnectToken`: compáralos, para que una sesión que empezó otro no acabe en el navegador
+     * de tu usuario). Si en esa URL viene también `error`, la conexión no terminó —`access_denied`
+     * si canceló, `no_accounts` si la red no devolvió ninguna, `connect_failed` con `error_code`—
+     * y la sesión sigue `pending`: puede reintentarlo con el mismo enlace.
+     *
+     * **Sólo la app que emitió el token.** Cualquier otra recibe 551, igual que una sesión que no
+     * existe o que ha caducado: una `returned` vive media hora.
+     */
+    async getConnectSession(
+        idOrganization: string,
+        idSession: string,
+        options: RequestOptions = {},
+    ): Promise<ConnectSession> {
+        return this.getOne<ConnectSession>(
+            `/organizations/${requireId(idOrganization, "idOrganization")}/connect_sessions/${requireId(idSession, "idSession")}`,
+            "connect_session",
+            undefined,
+            options,
+        );
+    }
+
+    /**
+     * Habilita las cuentas que eligió tu usuario y cierra la sesión. Una lista vacía es «ninguna».
+     *
+     * **O todas o ninguna**: si las nuevas no caben en el plan contesta 706 con
+     * `{limit, used, requested}` y no habilita NINGUNA, así que ese número se le puede enseñar tal
+     * cual. Las que ya estaban activas (`already_enabled`) no cuentan. Cada cuenta habilitada
+     * dispara el webhook `new_account`, como en cualquier conexión.
+     */
+    async confirmConnectSession(
+        idOrganization: string,
+        idSession: string,
+        accountIds: readonly string[],
+        options: RequestOptions = {},
+    ): Promise<Account[]> {
+        const body = await this.httpPost<{ accounts: Account[] }>(
+            `/organizations/${requireId(idOrganization, "idOrganization")}/connect_sessions/${requireId(idSession, "idSession")}/confirm`,
+            { accounts: [...accountIds] },
+            options,
+        );
+        return body.accounts;
     }
 
     /** Las cuentas de una organización. */

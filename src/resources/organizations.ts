@@ -11,6 +11,7 @@ import type { RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages, unwrapOne } from "../core/pagination.js";
 import type {
+    AccountSelection,
     AiContext,
     ConnectToken,
     Organization,
@@ -46,6 +47,19 @@ export interface ConnectTokenOptions extends RequestOptions {
      * registrados en la app, o la llamada contesta el error 532.
      */
     redirect_uri?: string | undefined;
+    /**
+     * Quién enseña la pantalla de elegir cuentas. Sin esto, PlanVortex (`"planvortex"`).
+     *
+     * Con `"integrator"` esa pantalla es tuya: la `url` que vuelve es la página de autorización
+     * DE LA RED, el usuario va ahí directamente desde tu app, y al terminar aterriza en tu
+     * `redirect_uri` con `?connect_session=…&social_network=…` sin ver nada de PlanVortex. Lees la
+     * sesión con `accounts.getConnectSession()` y confirmas con `accounts.confirmConnectSession()`.
+     *
+     * Exige `redirect_uri` y `social_network` (549), y Telegram no puede (550): su enlace abre un
+     * chat del que no se vuelve. En WhatsApp la `url` sigue siendo una página de PlanVortex con un
+     * botón, porque el popup de Meta sólo se abre en nuestro dominio.
+     */
+    account_selection?: AccountSelection | undefined;
 }
 
 export class OrganizationsResource extends Resource {
@@ -192,7 +206,11 @@ export class OrganizationsResource extends Resource {
     ): Promise<ConnectToken> {
         return this.httpGet<ConnectToken>(
             `/organizations/${requireId(idOrganization, "idOrganization")}/temporal_connect_token`,
-            { social_network: options.social_network, redirect_uri: options.redirect_uri },
+            {
+                social_network: options.social_network,
+                redirect_uri: options.redirect_uri,
+                account_selection: options.account_selection,
+            },
             options,
         );
     }
