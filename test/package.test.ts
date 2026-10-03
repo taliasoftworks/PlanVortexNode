@@ -86,6 +86,7 @@ describe("los webhooks", () => {
         const fromSpec = [
             ...schemas.CommentsWebhookChange.properties.field.enum,
             ...schemas.CommentsIntegrationWebhookChange.properties.field.enum,
+            ...schemas.CommentsAiPlanWebhookChange.properties.field.enum,
         ];
         expect([...WEBHOOK_EVENTS].sort()).toEqual(fromSpec.sort());
     });
@@ -103,5 +104,10 @@ describe("los webhooks", () => {
         expect(account.required).toContain("social_network");
         expect(Object.keys(integration.properties)).not.toContain("id_account");
         expect(Object.keys(integration.properties)).not.toContain("social_network");
+
+        //El final de un plan de IA, lo mismo: un plan puede abarcar varias redes.
+        const aiPlan = openapi.components.schemas.CommentsAiPlanWebhookChange;
+        expect(Object.keys(aiPlan.properties)).not.toContain("id_account");
+        expect(Object.keys(aiPlan.properties)).not.toContain("social_network");
     });
 });

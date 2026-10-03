@@ -14,8 +14,9 @@
  * Y LO QUE SORPRENDE:
  *
  *  - **`create()` no genera nada**: encola el plan y devuelve el presupuesto. La generación la hace
- *    un job aparte, así que hay que sondear {@link AiPlansResource.get} mientras el estado sea
- *    `pending` o `generating`. Puede tardar minutos.
+ *    un job aparte y puede tardar minutos. Cuando termina, el `webhook_url` de tu app recibe
+ *    `ai_plan_generated` o `ai_plan_failed` (`isAiPlanChange` de `planvortex/webhooks`); sin
+ *    webhook, sondea {@link AiPlansResource.get} mientras el estado sea `pending` o `generating`.
  *  - **Lo generado son publicaciones NORMALES en estado `draft`.** Se editan y se borran con
  *    `pv.publications`, no con nada de aquí. Validar es lo que las pasa a `ready`.
  *  - **Se paga en créditos de IA y el precio se sabe ANTES.** El presupuesto lo calcula el
@@ -183,8 +184,9 @@ export class AiPlansResource extends Resource {
     /**
      * Un plan, con sus publicaciones **ya resueltas** y con los ficheros de cada una.
      *
-     * Es el endpoint que se sondea mientras `state` sea `pending` o `generating`. No hay webhook de
-     * esto todavía.
+     * Léelo cuando a tu app le llegue `ai_plan_generated` o `ai_plan_failed`. Sin webhook, es el
+     * endpoint que se sondea mientras `state` sea `pending` o `generating`. El webhook no se
+     * reintenta: si tu endpoint estaba caído cuando el plan terminó, esto sigue diciendo cómo acabó.
      */
     async get(
         idClient: string,
@@ -312,8 +314,8 @@ export class AiPlansResource extends Resource {
     }
 
     /**
-     * Vuelve a encolar un plan `failed` con los mismos datos. El estado regresa a `pending` y hay
-     * que volver a sondear.
+     * Vuelve a encolar un plan `failed` con los mismos datos. El estado regresa a `pending` y el
+     * final vuelve a llegar como tras `create()`: por webhook, o sondeando.
      *
      * Usa el contexto de marca copiado al crear el plan, no el actual: el plan es reproducible
      * aunque alguien haya editado la configuración entretanto.

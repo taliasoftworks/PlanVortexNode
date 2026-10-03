@@ -279,6 +279,7 @@ export type {
     Publication,
     PublicationAiGenerated,
     PublicationDestination,
+    PublicationPending,
     PublicationErrorDetail,
     PublicationInput,
     PublicationLimits,

@@ -48,6 +48,7 @@ import type {
     Publication,
     PublicationAiGenerated,
     PublicationInput,
+    PublicationPending,
     PublicationState,
     SocialAuthorizationMethod,
     SocialNetwork,
@@ -243,6 +244,17 @@ describe("los tipos publicos", () => {
         expectTypeOf<Publication["ai_generated"]>().toEqualTypeOf<PublicationAiGenerated | undefined>();
         expect({ ...publicacion, ai_generated: marcada }.ai_generated.text).toBe(true);
         expect(origen.provider).toBe("openrouter");
+    });
+
+    it("pending_publish: el video que Instagram aun procesa tiene tipo propio, y next_check es el contrato", () => {
+        const pendiente: PublicationPending = {
+            next_check: "2026-10-03T10:01:00.000Z",
+            deadline: "2026-10-03T10:10:00.000Z",
+        };
+
+        expectTypeOf<Publication["pending_publish"]>().toEqualTypeOf<PublicationPending | undefined>();
+        expectTypeOf<PublicationPending["next_check"]>().toEqualTypeOf<string | undefined>();
+        expect({ ...publicacion, state: "publishing" as const, pending_publish: pendiente }.pending_publish.next_check).toBe("2026-10-03T10:01:00.000Z");
     });
 
     /** El `{data, total}` de la libreria, que es igual en todos los dominios */

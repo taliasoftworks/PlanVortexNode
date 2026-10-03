@@ -367,7 +367,7 @@ export interface paths {
         put?: never;
         /**
          * Create an AI publication plan
-         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job; poll GET by id while state is pending or generating. Validations at creation: the client plan allows AI (it contracts AI credits; Free does not), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117). With a Pinterest account in the plan, two more checks run at creation: every Pinterest account needs its board in `destinations` (2118), and a configuration that would leave pins without an image is refused (2119).
+         * @description Create a weekly AI publication plan. The plan is queued in state 'pending' and generated asynchronously by the generate-ai-plans job. When it finishes, your app's `webhook_url` receives `ai_plan_generated` or `ai_plan_failed` (the payload is in the comments specification, `AiPlanWebhookChange`); without a webhook, poll GET by id while state is pending or generating. The webhook is best effort and not retried, so the GET is still the source of truth. Validations at creation: the client plan allows AI (it contracts AI credits; Free does not), the accounts belong to the organization, there are enough AI credits for the deterministic base cost (orchestration + target texts), and there is room in the organization's monthly publication limit. Returns the created plan together with the deterministic cost estimate. Requires the ai_plans:create permission. Since the plan can be generated from a SOURCE (`template` + `source`), part of that validation is the source itself: the article is downloaded, the catalogue is read live and the product pictures are copied — all of it inside this request, so what does not work fails with the user in front of it. A plan whose source did not fit in the week is still created, and says so in ai_plan.warnings (2117). With a Pinterest account in the plan, two more checks run at creation: every Pinterest account needs its board in `destinations` (2118), and a configuration that would leave pins without an image is refused (2119).
          */
         post: operations["addAiPlan"];
         delete?: never;
@@ -385,7 +385,7 @@ export interface paths {
         };
         /**
          * Get an AI publication plan by id
-         * @description Return a single AI plan with its generated publications populated. This is the endpoint clients poll while state is pending or generating to detect when generation finishes. Requires the ai_plans:read permission.
+         * @description Return a single AI plan with its generated publications populated. Read it when your app receives `ai_plan_generated` or `ai_plan_failed`. Without a webhook, this is the endpoint to poll while state is pending or generating. The webhook is not retried, so if your endpoint was down when the plan finished, this GET still tells you how it ended. Requires the ai_plans:read permission.
          */
         get: operations["getAiPlan"];
         put?: never;
@@ -463,7 +463,7 @@ export interface paths {
         put?: never;
         /**
          * Retry a failed AI publication plan
-         * @description Re-queue a failed plan: it goes back to state 'pending' (attempts and error reset) and the background job regenerates it with the SAME data (prompt, accounts, options). Poll the plan while state is pending or generating, as after creation. Only valid from state 'failed'. Already-spent credits are NOT refunded and a new generation spends again; drafts left over from the failed attempt are discarded by the generation itself. If the failure was a business error (no AI credits, no monthly publication slots), retrying will fail the same way. Requires the ai_plans:update permission.
+         * @description Re-queue a failed plan: it goes back to state 'pending' (attempts and error reset) and the background job regenerates it with the SAME data (prompt, accounts, options). As after creation, the end arrives on your webhook as `ai_plan_generated` or `ai_plan_failed`; without one, poll the plan while state is pending or generating. Only valid from state 'failed'. Already-spent credits are NOT refunded and a new generation spends again; drafts left over from the failed attempt are discarded by the generation itself. If the failure was a business error (no AI credits, no monthly publication slots), retrying will fail the same way. Requires the ai_plans:update permission.
          */
         post: operations["retryAiPlan"];
         delete?: never;
@@ -1242,7 +1242,9 @@ export interface paths {
         put?: never;
         /**
          * Create new publications
-         * @description Create new publications. For X (Twitter) accounts, paid actions consume the client's monthly X credit pool (shared across organizations). When a publication is sent immediately, the required credits are checked before publishing and only charged on success. A tweet costs 15 credits, or 200 credits if its text contains a link. Link detection uses the same rule the backend applies: an http(s):// URL, a www. host, or a bare domain with a recognized TLD (regex TWITTER_LINK_REGEX). A scheduled publication does not consume credits when created; it is charged when the background job publishes it. If there are not enough credits at publish time the scheduled publication is left in state 'withErrors' with publication_errors.code = 940 and the client-app webhook is fired (it is never thrown). Publishing immediately without enough credits returns error 940.
+         * @description Create new publications. For X (Twitter) accounts, paid actions consume the client's monthly X credit pool (shared across organizations). When a publication is sent immediately, the required credits are checked before publishing and only charged on success. A tweet costs 15 credits, or 200 credits if its text contains a link. Link detection uses the same rule the backend applies: an http(s):// URL, a www. host, or a bare domain with a recognized TLD (regex TWITTER_LINK_REGEX). A scheduled publication does not consume credits when created; it is charged when the background job publishes it. If there are not enough credits at publish time the scheduled publication is left in state 'withErrors' with publication_errors.code = 940 (it is never thrown, and no webhook announces it: read the publication to find out). Publishing immediately without enough credits returns error 940.
+         *
+         *     **An Instagram video can come back in state `publishing`, and that is not an error.** Instagram processes a video before it can be published, and the request waits about 30 seconds for it. If Meta has not finished by then, the response carries `state: "publishing"` and a `pending_publish` object, and PlanVortex keeps asking Instagram about once a minute in the background, for up to 10 minutes. Read the publication again (`GET /organizations/{id_organization}/publish/{id_publication}`) after `pending_publish.next_check` until it is `sended` or `withErrors`. **Do not retry it or create it again**: the first one is still on its way, and a second one would publish the video twice.
          */
         post: operations["addPublication"];
         delete?: never;
@@ -1992,6 +1994,8 @@ export interface paths {
          * @description Delete publication by identifier. It stops being readable by identifier afterwards, so deleting twice answers error 917. For an already-sent X (Twitter) publication, removing the tweet on X is a paid action that consumes 15 X credits; it is only removed on X when there are enough credits. Returns error 940 when the X credit pool is exhausted.
          *
          *     **On Telegram there is a 48-hour window.** Past it the Bot API refuses to delete a message whatever the bot's role is, and the answer is error 966 with `published_date` and `max_hours` in `data` — so the sensible thing is to grey the button out rather than offer it and fail. Error 969 is the other case: the bot is no longer allowed to delete there. And an album is several messages: all of them go, or the post would be left half-published in the channel.
+         *
+         *     **Deleting a publication that is still `publishing` with `pending_publish` stops it**: PlanVortex stops asking Instagram and never publishes it, unless the check running at that very moment has already done so.
          */
         delete: operations["deletePublication"];
         options?: never;
@@ -2062,7 +2066,9 @@ export interface paths {
          * Retry a failed publication
          * @description Sends a publication that ended in state `withErrors` to its social network again, WITHOUT changing its content.
          *
-         *     The publication is sent during the request, so the response already carries the outcome: `state: "sended"` if it went out, or `state: "withErrors"` with the errors of THIS attempt if it failed again. A scheduled publication whose date has not arrived yet goes back to `ready` and the scheduler picks it up at its time.
+         *     The publication is sent during the request, so the response already carries the outcome: `state: "sended"` if it went out, or `state: "withErrors"` with the errors of THIS attempt if it failed again. An Instagram video can also come back in `publishing` with `pending_publish`: the attempt goes on in the background, and the retry is already spent (see `pending_publish` in `Publication`).
+         *
+         *     On Instagram, a retry is worth it after a **999** (Meta ran out of time) and pointless after a **998** (Meta rejected the file): change the file with a `PUT` first. A scheduled publication whose date has not arrived yet goes back to `ready` and the scheduler picks it up at its time.
          *
          *     Every accepted call spends one retry, even when the publication fails again — what the endpoint promises is an attempt, not a success. The limit is `max_retries`, also served by `GET /publication_limits`. Once it is spent the way to try again is to update the publication (`PUT`), which resets the counter to 0, or to create a new one.
          */
@@ -2670,9 +2676,9 @@ export interface webhooks {
          * A change happened (notification to your app)
          * @description PlanVortex `POST`s to the `webhook_url` of your client app when something happens. **The body is an array of changes**, and each one carries `field` telling you what it is — switch on it and ignore what you do not handle, because the list grows with the product.
          *
-         *     Two shapes travel in that array. A change on an **account** (`WebhookChange`) always carries `id_account`, `id_organization` and `social_network`. A change on an **integration** (`IntegrationWebhookChange`) carries none of those, because an integration hangs off the organization and not off any account.
+         *     Three shapes travel in that array. A change on an **account** (`WebhookChange`) always carries `id_account`, `id_organization` and `social_network`. A change on an **integration** (`IntegrationWebhookChange`) and the end of an **AI plan** (`AiPlanWebhookChange`) carry none of those, because they hang off the organization and not off any account.
          *
-         *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments` and `integration_error`.
+         *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments`, `integration_error`, `ai_plan_generated` and `ai_plan_failed`.
          *
          *     ### Comments
          *
@@ -2681,6 +2687,14 @@ export interface webhooks {
          *     **Which networks arrive this way:** Facebook and Instagram, because Meta pushes them. YouTube, LinkedIn and Google Business have no comment webhook, so those are polled by a background job and appear in the inbox within a few hours rather than instantly. X is polled too, and only when the organization turns it on, because reading replies there is billed per unit.
          *
          *     **Meta repeats deliveries.** The same comment can arrive more than once; the backend is idempotent about it and so should you be — deduplicate on `commentObj.external_id`.
+         *
+         *     ### AI plans
+         *
+         *     `ai_plan_generated` and `ai_plan_failed` say that a plan has **finished**: it was generated, or it gave up. Instead of polling the plan every few seconds, wait for one of these and then read it once with `GET /clients/{id_client}/organizations/{id_organization}/ai_plans/{id_ai_plan}`. The change carries ids and numbers only, never the prompt or the generated text, so the publications are in that `GET`.
+         *
+         *     A plan that hits a transient error goes back to the queue and is retried. That is not an end and sends nothing, so each plan sends **one** of these two events, never a `failed` followed by a `generated`. A plan generated with notices (`warnings` above zero) is still `ai_plan_generated`: it is usable, and the notices are in the plan.
+         *
+         *     The event goes to **every** app of the client that has a `webhook_url`, not only to the one that created the plan. And it is not retried: if your endpoint was down when the plan finished, the `GET` still tells you how it ended, so on startup read the plans you were waiting for.
          *
          *     ### Verifying the signature
          *
@@ -3044,7 +3058,7 @@ export interface components {
             /** @description The source snapshot. Absent on a `standard` plan, which has no source. */
             source?: components["schemas"]["AiPlansAiPlanSource"];
             /**
-             * @description State machine: pending -> generating -> generated -> validated | failed | cancelled. Poll the plan while state is pending or generating.
+             * @description State machine: pending -> generating -> generated -> validated | failed | cancelled. Reaching `generated` or `failed` is announced to your app's webhook (`ai_plan_generated`, `ai_plan_failed`); without one, poll the plan while state is pending or generating.
              * @enum {string}
              */
             state: "pending" | "generating" | "generated" | "validated" | "failed" | "cancelled";
@@ -3355,7 +3369,7 @@ export interface components {
              *
              *     **The body is an array of changes, not a single object**, and it carries two signature headers computed with this app's secret over the **raw** body: `x-hub-signature` (`sha1=<hex>`) and `x-hub-signature-256` (`sha256=<hex>`). Verify against the bytes you received — parsing the JSON and re-serialising it changes them and the signature will not match.
              *
-             *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments` and `integration_error`. The payload is documented in the `comments` specification. Delivery is best effort: PlanVortex does not retry a webhook that fails.
+             *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments`, `integration_error`, `ai_plan_generated` and `ai_plan_failed`. The payload is documented in the `comments` specification. **Every** app of the client that has a `webhook_url` receives every event, not only the app whose call caused it: with two apps, each event arrives twice. Delivery is best effort: PlanVortex does not retry a webhook that fails.
              */
             webhook_url?: string;
         };
@@ -3645,6 +3659,40 @@ export interface components {
             total?: number;
             users?: components["schemas"]["ClientsRolesUser"][];
         };
+        /**
+         * @description One change in the array PlanVortex posts to your app's `webhook_url`, when an **AI plan finished**: `ai_plan_generated` when it came out, `ai_plan_failed` when it gave up.
+         *
+         *     Like `IntegrationWebhookChange`, it carries no `id_account` and no `social_network`: a plan can span several networks, and it hangs off the organization. It carries ids and numbers only. Read the plan itself with `GET /clients/{id_client}/organizations/{id_organization}/ai_plans/{id_ai_plan}`.
+         */
+        CommentsAiPlanWebhookChange: {
+            /** @description AI credits the generation consumed, the same figure as `AiPlan.credits_spent`. A failed plan can have spent credits too, and they are not refunded. */
+            credits_spent: number;
+            /** @description Only on `ai_plan_failed`: why the plan failed, the same `code` and `message` as `AiPlan.error`. Its `data` does not travel here; read the plan for it. */
+            error?: components["schemas"]["CommentsAiPlanWebhookError"];
+            /** @enum {string} */
+            field: "ai_plan_generated" | "ai_plan_failed";
+            id_ai_plan: string;
+            id_organization: string;
+            /**
+             * @description The state the plan finished in. It always matches `field`: `generated` with `ai_plan_generated`, `failed` with `ai_plan_failed`.
+             * @enum {string}
+             */
+            state: "generated" | "failed";
+            /**
+             * @description What the plan was generated from, the same value as `AiPlan.template`.
+             * @enum {string}
+             */
+            template: "standard" | "from_images" | "from_text" | "from_catalog" | "campaign";
+            /** @description How many draft publications the plan holds. A failed plan can still hold the drafts of its failed attempt; retrying it discards them. */
+            total_publications: number;
+            /** @description **How many** non-blocking notices the plan has, not the notices themselves: those are in `AiPlan.warnings`. Above zero the plan is still generated and usable. */
+            warnings: number;
+        };
+        /** @description Why an AI plan failed, inside `AiPlanWebhookChange.error`: the same `code` and `message` as `AiPlan.error`. Its `data` is left out, because it can carry what the AI provider answered; read the plan for it. */
+        CommentsAiPlanWebhookError: {
+            code: number;
+            message: string;
+        };
         /** @description A comment — or a review — as PlanVortex stores it. Remember it is a **snapshot** of what the network said at `collected_date`; the live thread endpoints return the same shape reconciled against the network. */
         CommentsComment: {
             _id: string;
@@ -3776,7 +3824,7 @@ export interface components {
         /**
          * @description One change in the array PlanVortex posts to your app's `webhook_url`, when the change concerns a social **account**.
          *
-         *     An integration that stopped working has a shape of its own — `IntegrationWebhookChange` — and one delivery can mix both. Switch on `field`, and ignore what you do not handle.
+         *     An integration that stopped working has a shape of its own (`IntegrationWebhookChange`), and so does an AI plan that finished (`AiPlanWebhookChange`). One delivery can mix them. Switch on `field`, and ignore what you do not handle.
          */
         CommentsWebhookChange: {
             /** @description The comment. Present only when `field` is `comments`, and absent even then if the author deleted a comment we had never seen. */
@@ -4720,10 +4768,13 @@ export interface components {
             name?: string;
             /** Format: date-time */
             next_stats_update?: string;
+            pending_publish?: components["schemas"]["PublicationPending"];
             /**
              * @description Why the publication failed, one entry per problem. **It is an array**, and it is empty on a publication that has not failed.
              *
-             *     For a scheduled X (Twitter) publication that runs out of credits at publish time, `code` is 940 and `data` is `{ used, limit }`; the publication stays in state `withErrors` and the client-app webhook is fired.
+             *     For a scheduled X (Twitter) publication that runs out of credits at publish time, `code` is 940 and `data` is `{ used, limit }`; the publication stays in state `withErrors`. No webhook announces it: read the publication to find out.
+             *
+             *     On Instagram, two codes tell you whether a retry makes sense. **998**: Meta rejected the media while processing it (a codec, a duration, a URL it could not download). `data` carries `container_id`, `status_code` and, when Meta gives one, its reason in `status`. Retrying the same file fails the same way: change it first. **999**: Meta had not finished processing the media 10 minutes after it was sent. `data` carries `container_ids` and `minutes`. The file is not the problem, and a retry usually works.
              */
             publication_errors: {
                 code: number;
@@ -4749,6 +4800,8 @@ export interface components {
             social_network: components["schemas"]["SocialNetwork"];
             /**
              * @description `draft` is never sent; `ready` is scheduled; `publishing` is in the network's hands right now; `sended` went out; `withErrors` failed and carries the reason in `publication_errors`.
+             *
+             *     `publishing` usually lasts a few seconds, but it can last **up to 10 minutes** when the network is still processing a video (today, Instagram). Then `pending_publish` is present: wait and read the publication again, do not retry it.
              * @enum {string}
              */
             state: "ready" | "withErrors" | "sended" | "draft" | "publishing";
@@ -4792,6 +4845,31 @@ export interface components {
             section_id?: string;
             /** @description The section's label, for display. Decides nothing. */
             section_name?: string;
+        };
+        /**
+         * @description Present only while the network is still **processing** what was sent, and PlanVortex is waiting to publish it. Today that happens on Instagram alone, when Meta takes longer than the ~30 seconds the request waits to process the media. In practice, that means videos.
+         *
+         *     The publication stays in state `publishing`, and the background job asks Instagram again about once a minute until it goes out (`sended`) or fails (`withErrors`). It gives up 10 minutes after the media was sent to Instagram, and then the publication ends in `withErrors` with code 999. The object disappears as soon as the publication is resolved.
+         *
+         *     **Wait for it. Do not retry it and do not create it again**: it has not failed, and a second publication would put the same video out twice. There is no webhook for the outcome: read the publication again after `next_check`. While this object is present the publication **cannot be updated** (error 921), for the same reason.
+         */
+        PublicationPending: {
+            /** @description PlanVortex's own bookkeeping to resume the publication (on Instagram, the ids of Meta's containers). Its content may change without notice. */
+            data?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date-time
+             * @description When PlanVortex stops waiting. If the network has not finished by then, the publication ends in `withErrors` (999 on Instagram).
+             */
+            deadline?: string;
+            /**
+             * Format: date-time
+             * @description When PlanVortex will ask the network again. A good moment to read the publication again: asking before it changes nothing.
+             */
+            next_check?: string;
+            /** @description PlanVortex's own bookkeeping: the temporary cropped files the network may still be downloading. Do not rely on it. */
+            temp_keys?: string[];
         };
         /** @description A place inside the account a publication can be sent to: on Pinterest, a board. */
         PublicationsDestination: {
@@ -8792,7 +8870,7 @@ export interface operations {
              *     | `1101` | Invalid organization |
              *     | `917` | Publication doesn't exists |
              *     | `935` | Invalid publication |
-             *     | `921` | Can't update a publication already sended |
+             *     | `921` | Can't update a publication already sended, **or one the network is still processing** (state `publishing` with `pending_publish`; then `data.state` is `publishing`). Editing it would publish it twice. It can be edited again if it fails. |
              *     | `940` | X (Twitter) credits exhausted. Not enough monthly credits to publish this tweet (same link detection and 15/200 tariff as on create). Response data: { used, limit }. |
              *     | `523` | Invalid application |
              */
@@ -10424,7 +10502,7 @@ export interface operations {
              *     | `1101` | Invalid organization |
              *     | `917` | Publication doesn't exists |
              *     | `935` | Invalid publication |
-             *     | `921` | Can't update a publication already sended |
+             *     | `921` | Can't update a publication already sended, **or one the network is still processing** (state `publishing` with `pending_publish`; then `data.state` is `publishing`). Editing it would publish it twice. It can be edited again if it fails. |
              *     | `940` | X (Twitter) credits exhausted. Not enough monthly credits to publish this tweet (same link detection and 15/200 tariff as on create). Response data: { used, limit }. |
              *     | `523` | Invalid application |
              */
@@ -12168,7 +12246,7 @@ export interface operations {
                  *       }
                  *     ]
                  */
-                "application/json": (components["schemas"]["CommentsWebhookChange"] | components["schemas"]["CommentsIntegrationWebhookChange"])[];
+                "application/json": (components["schemas"]["CommentsWebhookChange"] | components["schemas"]["CommentsIntegrationWebhookChange"] | components["schemas"]["CommentsAiPlanWebhookChange"])[];
             };
         };
         responses: {

@@ -497,6 +497,17 @@ export type AiImageOrigin = Schemas["AiImageOrigin"];
 export type PublicationAiGenerated = Schemas["PublicationAiGenerated"];
 
 /**
+ * La red aun esta PROCESANDO lo que se le mando y PlanVortex espera para publicarlo: hoy, un video
+ * de Instagram que Meta tarda mas de ~30 s en procesar. La {@link Publication} sigue en
+ * `publishing` hasta 10 minutos, y PlanVortex vuelve a preguntar solo una vez por minuto.
+ *
+ * **Hay que esperar, no reintentar ni volver a crearla**: saldria el video dos veces. No hay webhook
+ * del resultado: vuelve a leer la publicacion despues de `next_check`. Mientras esta puesto no se
+ * puede editar (error 921). `temp_keys` y `data` son contabilidad interna de PlanVortex.
+ */
+export type PublicationPending = Schemas["PublicationPending"];
+
+/**
  * Una publicacion: programada, enviada o fallida.
  *
  * DOS COSAS QUE SORPRENDEN, las dos comprobadas contra el servidor en la fase 6:

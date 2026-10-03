@@ -165,8 +165,13 @@ const { ai_plan, estimate } = await pv.aiPlans.create(clientId, orgId, {
 console.log(estimate.images_target); // 0 — the pictures come from the source
 ```
 
-Four things worth knowing before you build the screen:
+Five things worth knowing before you build the screen:
 
+- **You do not have to poll.** When the plan finishes, your app's webhook receives
+  `ai_plan_generated` or `ai_plan_failed` (see [the events](#the-events)), and that is the moment to
+  read it with `pv.aiPlans.get()`. Without a webhook, poll `get` while `state` is `pending` or
+  `generating`. Deliveries are not retried, so if your endpoint was down, `get` still tells you how
+  the plan ended.
 - **The template that does not generate images does not spend image credits, and images are 94 % of
   a plan.** The same week — 7 publications, a picture on each — costs 519 credits as `standard` and
   **48** as `from_images`. Say it before the plan is created, not after it is charged.
@@ -366,14 +371,17 @@ malformed signature.
 | `messaging_error`      | The network refused a message you sent                   | `messageObj.message_errors`   |
 | `comments`             | A comment came in                                        | `commentObj`                  |
 | `integration_error`    | An integration stopped working                           | `provider`, `error_code`      |
+| `ai_plan_generated`    | An AI plan finished and is ready to review               | `id_ai_plan`, `warnings`      |
+| `ai_plan_failed`       | An AI plan gave up                                       | `id_ai_plan`, `error`         |
 
-`isAccountStateChange`, `isMessageChange`, `isCommentChange` and `isIntegrationErrorChange` narrow
-a change to its own type. Use them rather than a `switch`: the union carries a member for the
+`isAccountStateChange`, `isMessageChange`, `isCommentChange`, `isIntegrationErrorChange` and
+`isAiPlanChange` narrow a change to its own type. Use them rather than a `switch`: the union carries a member for the
 `field`s this version does not know yet — the list grows — and TypeScript cannot rule that one out
 of a `case`.
 
-Two things about the payload that are easy to get wrong. An **integration** change carries neither
-`id_account` nor `social_network`, because an integration hangs off the organization. And
+Two things about the payload that are easy to get wrong. An **integration** change and an **AI
+plan** change carry neither `id_account` nor `social_network`, because both hang off the
+organization. And
 `messageObj` arrives **populated**: `contact_id`, `from_contact_id` and `message_options.files`
 carry whole objects rather than identifiers, which is what `messageContact`, `messageContactId`,
 `messageDirection` and `messageFiles` are for.

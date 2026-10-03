@@ -18,7 +18,7 @@
 import crypto from "node:crypto";
 
 import { NO_ERROR_CODE, PlanVortexError } from "../core/errors.js";
-import type { Comment, Message, SocialNetwork } from "../types.js";
+import type { Comment, Message, PlannerTemplateName, SocialNetwork } from "../types.js";
 
 // -------------------------------------------------------------------------------------------
 // El contrato: cabeceras y eventos
@@ -43,9 +43,10 @@ export type WebhookAlgorithm = keyof typeof WEBHOOK_SIGNATURE_HEADERS;
  * Los eventos que hoy se entregan de verdad, comprobados uno a uno contra el servidor.
  *
  * Salen de dos sitios: `ALLOWED_WEBHOOKS_NOTIFICATIONS` para los que levanta PlanVortex
- * (`new_account`, `change_state_account`, `integration_error`) y `WEBHOOKS_TO_HANDLE` para los que
- * llegan de la red y sobreviven al filtro. **La lista crece**, así que un `field` desconocido se
- * ignora en vez de romper: para eso está {@link UnknownWebhookChange}.
+ * (`new_account`, `change_state_account`, `integration_error`, `ai_plan_generated`,
+ * `ai_plan_failed`) y `WEBHOOKS_TO_HANDLE` para los que llegan de la red y sobreviven al filtro.
+ * **La lista crece**, así que un `field` desconocido se ignora en vez de romper: para eso está
+ * {@link UnknownWebhookChange}.
  */
 export const WEBHOOK_EVENTS = [
     "new_account",
@@ -56,6 +57,8 @@ export const WEBHOOK_EVENTS = [
     "messaging_error",
     "comments",
     "integration_error",
+    "ai_plan_generated",
+    "ai_plan_failed",
 ] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
@@ -130,6 +133,37 @@ export interface IntegrationErrorChange {
 }
 
 /**
+ * Un plan de IA TERMINÓ: salió (`ai_plan_generated`) o se rindió (`ai_plan_failed`).
+ *
+ * Es lo que te ahorra preguntar por el plan cada pocos segundos: espera a este evento y lee el plan
+ * una vez con `pv.aiPlans.get()`. Sólo trae ids y números, nunca el prompt ni lo generado.
+ *
+ * **No trae `id_account` ni `social_network`**, igual que {@link IntegrationErrorChange}: un plan
+ * puede abarcar varias redes y cuelga de la organización.
+ *
+ * Un fallo transitorio devuelve el plan a la cola y no manda nada, así que cada plan manda **uno**
+ * de los dos, nunca un `failed` seguido de un `generated`. Y no se reintenta: si tu endpoint estaba
+ * caído cuando terminó, `pv.aiPlans.get()` sigue diciendo cómo acabó.
+ */
+export interface AiPlanChange {
+    field: "ai_plan_generated" | "ai_plan_failed";
+    id_ai_plan: string;
+    id_organization: string;
+    /** El estado en que terminó. Siempre cuadra con `field`: `generated` o `failed`. */
+    state: "generated" | "failed";
+    /** De qué salió el plan: el mismo valor que `AiPlan.template`. La lista crece. */
+    template: PlannerTemplateName;
+    /** Cuántas publicaciones en borrador tiene. Uno `failed` puede conservar las del intento fallido. */
+    total_publications: number;
+    /** Los créditos de IA que gastó. Uno `failed` también puede haber gastado, y no se devuelven. */
+    credits_spent: number;
+    /** CUÁNTOS avisos dejó, no los avisos: ésos están en `AiPlan.warnings`. Con avisos sigue siendo usable. */
+    warnings: number;
+    /** Sólo en `ai_plan_failed`: el mismo `code` y `message` que `AiPlan.error`. Su `data`, en el plan. */
+    error?: { code: number; message: string };
+}
+
+/**
  * Un `field` que esta versión del paquete todavía no conoce.
  *
  * Está en la unión a propósito: el enum del servidor crece y una librería que rechazara lo que no
@@ -149,7 +183,12 @@ export interface UnknownWebhookChange {
  * {@link isCommentChange} y compañía, que es la forma recomendada.
  */
 export type WebhookChange =
-    AccountStateChange | MessageChange | CommentChange | IntegrationErrorChange | UnknownWebhookChange;
+    | AccountStateChange
+    | MessageChange
+    | CommentChange
+    | IntegrationErrorChange
+    | AiPlanChange
+    | UnknownWebhookChange;
 
 const ACCOUNT_STATE_EVENTS = new Set<string>(["new_account", "change_state_account"]);
 const MESSAGE_EVENTS = new Set<string>([
@@ -158,6 +197,7 @@ const MESSAGE_EVENTS = new Set<string>([
     "messaging_seen",
     "messaging_error",
 ]);
+const AI_PLAN_EVENTS = new Set<string>(["ai_plan_generated", "ai_plan_failed"]);
 
 /** Una cuenta se conectó o cambió de estado. */
 export function isAccountStateChange(change: WebhookChange): change is AccountStateChange {
@@ -177,6 +217,11 @@ export function isCommentChange(change: WebhookChange): change is CommentChange 
 /** Una integración dejó de funcionar. */
 export function isIntegrationErrorChange(change: WebhookChange): change is IntegrationErrorChange {
     return change.field === "integration_error";
+}
+
+/** Un plan de IA terminó, bien o mal. Mira `field` (o `state`) para saber cuál. */
+export function isAiPlanChange(change: WebhookChange): change is AiPlanChange {
+    return AI_PLAN_EVENTS.has(change.field);
 }
 
 // -------------------------------------------------------------------------------------------

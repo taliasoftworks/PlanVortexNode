@@ -20,6 +20,7 @@ import { messageContact, messageDirection } from "../src/index.js";
 import {
     WEBHOOK_SIGNATURE_HEADERS,
     isAccountStateChange,
+    isAiPlanChange,
     isCommentChange,
     isIntegrationErrorChange,
     isMessageChange,
@@ -56,6 +57,13 @@ const receive = planvortexWebhooks({
                 );
             } else if (isIntegrationErrorChange(change)) {
                 console.log(`  · la integración ${change.provider} falló con ${change.error_code}`);
+            } else if (isAiPlanChange(change)) {
+                //Sólo ids y números: el plan entero se lee una vez, ahora, con pv.aiPlans.get().
+                console.log(
+                    change.error
+                        ? `  · el plan ${change.id_ai_plan} falló con ${change.error.code}: ${change.error.message}`
+                        : `  · el plan ${change.id_ai_plan} está listo: ${change.total_publications} borradores`,
+                );
             } else if (isAccountStateChange(change)) {
                 console.log(`  · la cuenta ${change.id_account} (${change.social_network}): ${change.field}`);
             } else {
@@ -107,6 +115,16 @@ async function selfTest(): Promise<void> {
             id_organization: "66d04a6a427f4c43b9d97f00",
             provider: "google_drive",
             error_code: 2201,
+        },
+        {
+            field: "ai_plan_generated",
+            id_ai_plan: "66d04a6a427f4c43b9d97fb0",
+            id_organization: "66d04a6a427f4c43b9d97f00",
+            state: "generated",
+            template: "standard",
+            total_publications: 7,
+            credits_spent: 519,
+            warnings: 0,
         },
     ];
 

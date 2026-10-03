@@ -17,6 +17,7 @@ import {
     WebhookSignatureError,
     handleWebhookRequest,
     isAccountStateChange,
+    isAiPlanChange,
     isCommentChange,
     isIntegrationErrorChange,
     isMessageChange,
@@ -72,6 +73,30 @@ const integrationChange = {
     id_organization: ORG_ID,
     provider: "google_drive",
     error_code: 2201,
+};
+
+/** Tal y como lo manda `createNotification` del servidor: ids y números, nada del contenido. */
+const aiPlanGenerated = {
+    field: "ai_plan_generated",
+    id_ai_plan: "66d04a6a427f4c43b9d97fb0",
+    id_organization: ORG_ID,
+    state: "generated",
+    template: "from_images",
+    total_publications: 7,
+    credits_spent: 48,
+    warnings: 1,
+};
+
+const aiPlanFailed = {
+    field: "ai_plan_failed",
+    id_ai_plan: "66d04a6a427f4c43b9d97fb1",
+    id_organization: ORG_ID,
+    state: "failed",
+    template: "standard",
+    total_publications: 0,
+    credits_spent: 15,
+    warnings: 0,
+    error: { code: 941, message: "Not enough AI credits" },
 };
 
 /** Exactamente lo que sale por el cable: el array serializado una vez, y su HMAC. */
@@ -280,6 +305,30 @@ describe("los tipos de los eventos", () => {
         if (isIntegrationErrorChange(tercero!)) expect(tercero.error_code).toBe(2201);
     });
 
+    /**
+     * Los dos finales de un plan de IA viajan juntos, firmados como los firma el servidor, y el
+     * predicado los coge a los dos: el integrador distingue por `field` (o por `state`).
+     */
+    it("verifica y estrecha los dos finales de un plan de IA", () => {
+        const { body, headers } = delivery([aiPlanGenerated, aiPlanFailed]);
+        const [generated, failed] = handleWebhookRequest({ body, headers, secret: SECRET });
+
+        expect(isAiPlanChange(generated!)).toBe(true);
+        expect(isAiPlanChange(failed!)).toBe(true);
+        expect(isIntegrationErrorChange(generated!)).toBe(false);
+        expect(isAccountStateChange(generated!)).toBe(false);
+
+        if (isAiPlanChange(generated!)) {
+            expect(generated.state).toBe("generated");
+            expect(generated.error).toBeUndefined();
+            expect(generated.total_publications).toBe(7);
+        }
+        if (isAiPlanChange(failed!)) {
+            expect(failed.state).toBe("failed");
+            expect(failed.error?.code).toBe(941);
+        }
+    });
+
     it("cuenta los cuatro estados de cuenta como cambios de cuenta", () => {
         for (const field of ["new_account", "change_state_account"]) {
             expect(isAccountStateChange({ field } as WebhookChange)).toBe(true);
@@ -303,6 +352,7 @@ describe("los tipos de los eventos", () => {
         expect(isMessageChange(change!)).toBe(false);
         expect(isAccountStateChange(change!)).toBe(false);
         expect(isIntegrationErrorChange(change!)).toBe(false);
+        expect(isAiPlanChange(change!)).toBe(false);
     });
 
     /**
