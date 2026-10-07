@@ -51,6 +51,10 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
     { from: 2000, to: 2099, family: "product" },
     { from: 2100, to: 2199, family: "ai_plan" },
     { from: 2200, to: 2299, family: "integration" },
+    //Los COMENTARIOS siguen aquí porque sus 945-948 se llenaron, y van con ellos a `publication`:
+    //el 2600 (esta cuenta no tiene bandeja, un perfil personal de LinkedIn) es la versión por
+    //cuenta del 945, y separarlos daría dos clases para el mismo «aquí no hay comentarios».
+    { from: 2600, to: 2699, family: "publication" },
 ] as const;
 
 /**

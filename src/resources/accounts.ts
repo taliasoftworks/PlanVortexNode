@@ -45,7 +45,10 @@ export interface AccountListOptions extends PageOptions {
     social_network?: readonly SocialNetwork[] | undefined;
     /** Sólo estas cuentas, por identificador. */
     accounts?: readonly string[] | undefined;
-    /** Sólo las cuentas cuya red sabe hacer esto. */
+    /**
+     * Sólo las cuentas cuya red sabe hacer esto. `comments` mira además la cuenta: deja fuera los
+     * perfiles personales de LinkedIn, que no tienen bandeja aunque las páginas sí.
+     */
     capability?: AccountCapability | undefined;
 }
 

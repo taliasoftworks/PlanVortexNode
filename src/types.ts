@@ -309,6 +309,12 @@ export type ClientWithOrganizations =
  *
  * Y un canal de Telegram **privado** no trae `username`: solo los publicos tienen `@nombre`, que es
  * tambien por lo que sus publicaciones vuelven sin `url`.
+ *
+ * En LinkedIn una misma autorizacion trae dos clases de cuenta: el **perfil personal** de quien
+ * autoriza y cada **pagina** que administra. Las dos publican y tienen estadisticas, pero solo las
+ * paginas tienen bandeja de comentarios: LinkedIn no deja a ninguna app leer los comentarios de un
+ * perfil, y ahi todo `comments.*` devuelve el error 2600. Se distinguen por
+ * `extra_data.is_personal_profile`; ausente es pagina (las conectadas antes de que hubiera perfiles).
  */
 export type Account = Override<
     Schemas["Account"],

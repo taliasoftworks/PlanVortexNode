@@ -426,6 +426,7 @@ if you would rather branch on `error.family`.
 | 2000-2099            | Products                                               | `ProductError`      |
 | 2100-2199            | AI plans                                               | `AiPlanError`       |
 | 2200-2299            | Integrations                                           | `IntegrationError`  |
+| 2600-2699            | Comments: an account with no inbox (a LinkedIn personal profile) | `PublicationError`  |
 
 A code outside every range — the catalogue grows — arrives as the base `PlanVortexError` with its
 `code` and `message` untouched, never swallowed and never renamed. And when the failure never got a

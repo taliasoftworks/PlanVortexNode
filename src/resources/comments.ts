@@ -17,6 +17,11 @@
  *    CommentsResource.actions}: Instagram, X y Bluesky no dejan borrar el comentario de otro,
  *    LinkedIn no tiene "ocultar" —ni Discord ni Telegram tampoco— y Google Business sólo deja
  *    borrar **nuestra propia** respuesta.
+ *  - **Ni todas las CUENTAS.** Un perfil personal de LinkedIn publica pero no tiene bandeja:
+ *    LinkedIn no deja a ninguna app leer los comentarios de un perfil, sólo los de una página. Ahí
+ *    todo lo de este recurso devuelve el error 2600. Míralo antes en
+ *    `account.extra_data?.is_personal_profile`, o pide las cuentas con `capability: "comments"`,
+ *    que ya los deja fuera.
  *  - **En Telegram la bandeja empieza el día que se conectó el canal.** La Bot API no sabe leer el
  *    pasado: un bot sólo se entera de lo que pasa mientras está dentro, así que nada anterior a la
  *    conexión existe aquí y nunca existirá. Dilo en tu interfaz — una bandeja que abre vacía en un

@@ -2722,6 +2722,8 @@ export interface components {
          *
          *     On `discord`, on `telegram` and on `slack` an account is a **channel**, not a profile: publishing to two Discord channels of the same server — or to two Telegram channels of the same brand, or to `#anuncios` and `#general` of the same Slack workspace — costs two accounts of the plan.
          *
+         *     On `linkedin` one authorization brings two kinds of account: the **personal profile** of whoever authorizes and each **page** they manage. Both publish and both have statistics, but only pages have a comment inbox: LinkedIn does not let any app read the comments on a member's posts, so on a profile every comment endpoint returns error `2600`. `extra_data.is_personal_profile` tells them apart.
+         *
          *     `error_code` other than `0` means the connection is broken — an expired token, a permission taken away — and the account has to be connected again. On `telegram` nothing expires, because there is no account token: what breaks the connection is the bot being removed from the channel or losing its permission to post there (error 968). On `slack` the bot token does not expire either: what breaks it is the app being removed from the channel (error 980) or the channel being archived or deleted (error 985).
          */
         Account: {
@@ -2730,6 +2732,13 @@ export interface components {
             creation_date: string;
             /** @description `0` is a healthy account. Anything else is a PlanVortex error code explaining why the connection stopped working; the account keeps its data but cannot be used until it is reconnected. */
             error_code: number;
+            /** @description What only makes sense on this account's network. Only the keys documented here are part of the contract: anything else in the object can change without notice. */
+            extra_data?: {
+                /** @description `linkedin` only. `true` on the personal profile of whoever authorized, `false` on a page. A profile publishes and has statistics but no comment inbox (error `2600`). Pages connected before personal profiles existed do not carry it, so treat absent as a page. */
+                is_personal_profile?: boolean;
+            } & {
+                [key: string]: unknown;
+            };
             /** @description Followers the network reports. Absent on an account that has never been measured. On `telegram` and on `slack` it is the channel's member count, and it is the **only** audience figure either network publishes: there are no views, no impressions and no reach anywhere in the Bot API nor in the Slack Web API. */
             followers_count?: number;
             /** @description The client the organization hangs from. Denormalized here for the plan checks. */
@@ -3813,12 +3822,16 @@ export interface components {
             destinations: boolean;
             /** @description The publication carries a **destination link of its own** (`link`), separate from its text: where a pin takes whoever clicks it. On a network that answers `false` the field is deleted on save, so do not offer it. Today only `pinterest`. */
             link: boolean;
+            /** @description The publication can say whether it is **made for kids** (`made_for_kids`, COPPA). On a network that answers `false` the field is deleted on save, so do not offer it. Today only `youtube`. */
+            made_for_kids: boolean;
             messages: boolean;
             persistent_menu: boolean;
             products: boolean;
             publications: boolean;
             /** @description The publication can say **who can reply** to it (`reply_control`): anyone, the account's followers, the profiles it follows or the profiles mentioned in the text. It is set when the publication goes out and cannot be changed afterwards. On a network that answers `false` the field is deleted on save, so do not offer it. Today only `threads`. */
             reply_control: boolean;
+            /** @description The publication can say **who can see it** when it goes out (`visibility`): public, unlisted or private. On a network that answers `false` the field is deleted on save, so do not offer it. Today only `youtube`. */
+            visibility: boolean;
             webhooks: boolean;
         };
         /**
@@ -4065,6 +4078,20 @@ export interface components {
                 };
                 message: string;
             }[];
+            /**
+             * @description What still has to be done **by hand on the network** for a publication that DID go out. Same shape as `publication_errors`, and an empty array when there is nothing to do.
+             *
+             *     It is a separate field because these are not failures: the publication stays in state `sended` and must **not** be retried, because retrying would publish it twice. Like `publication_errors`, it belongs to the last attempt.
+             *
+             *     Today there is one code. **2400** (YouTube): YouTube accepted the upload but did not make the video public, so YouTube Studio shows it as a draft or private until someone sets its audience and visibility there. The upload does not fail when this happens; PlanVortex reads the video back right after uploading it to find out. `data` carries `requested_privacy_status`, `privacy_status` (what YouTube actually left), `upload_status`, `made_for_kids` and `studio_url`, the YouTube Studio page where it is finished.
+             */
+            publication_warnings?: {
+                code: number;
+                data?: {
+                    [key: string]: unknown;
+                };
+                message: string;
+            }[];
             /** Format: date-time */
             publish_date?: string;
             social_network: components["schemas"]["SocialNetwork"];
@@ -4165,7 +4192,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations. */
+            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2600-2699 comments, the ones that no longer fit in 945-948. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -4762,6 +4789,12 @@ export interface components {
              *     **On every other network the field is deleted on save**, like `destination`.
              */
             link?: string;
+            /**
+             * @description Whether the video is **made for kids** (COPPA), on the networks that answer `made_for_kids: true` in `GET /social_capabilities` (today `youtube`). Absent means `false`.
+             *
+             *     **On every other network the field is deleted on save**, like `reply_control`.
+             */
+            made_for_kids?: boolean;
             /** @description Last known measurement, in the common vocabulary. Absent until it is measured. */
             metrics?: components["schemas"]["NormalizedMetrics"];
             /** @description Internal name. Never shown on the social network. */
@@ -4785,6 +4818,20 @@ export interface components {
             }[];
             /** @enum {string} */
             publication_type: "profile" | "page" | "group" | "reels" | "stories" | "message";
+            /**
+             * @description What still has to be done **by hand on the network** for a publication that DID go out. Same shape as `publication_errors`, and an empty array when there is nothing to do.
+             *
+             *     It is a separate field because these are not failures: the publication stays in state `sended` and must **not** be retried, because retrying would publish it twice. Like `publication_errors`, it belongs to the last attempt.
+             *
+             *     Today there is one code. **2400** (YouTube): YouTube accepted the upload but did not make the video public, so YouTube Studio shows it as a draft or private until someone sets its audience and visibility there. The upload does not fail when this happens; PlanVortex reads the video back right after uploading it to find out. `data` carries `requested_privacy_status`, `privacy_status` (what YouTube actually left), `upload_status`, `made_for_kids` and `studio_url`, the YouTube Studio page where it is finished.
+             */
+            publication_warnings?: {
+                code: number;
+                data?: {
+                    [key: string]: unknown;
+                };
+                message: string;
+            }[];
             /** Format: date-time */
             publish_date?: string;
             /**
@@ -4813,6 +4860,13 @@ export interface components {
             title?: string;
             /** @description Link to the publication on the network, when there is one. A **private** Telegram channel has no public URL, so it comes back empty even though the post went out. */
             url?: string;
+            /**
+             * @description **Who can see the publication** when it goes out, on the networks that answer `visibility: true` in `GET /social_capabilities` (today `youtube`). Absent means `public`. It is set when the publication goes out.
+             *
+             *     **On every other network the field is deleted on save**, like `reply_control`.
+             * @enum {string}
+             */
+            visibility?: "public" | "unlisted" | "private";
         };
         /**
          * @description Which part of a publication was generated by AI. **Absent means nothing was.**
@@ -4915,6 +4969,16 @@ export interface components {
              *     On an update: omit it to keep what was there, send `null` or `""` to remove it.
              */
             link?: string;
+            /**
+             * @description Whether the video is **made for kids**. Only on the networks that answer `made_for_kids: true` in `GET /social_capabilities` (today `youtube`), and **deleted** on every other one. Absent means `false`.
+             *
+             *     The law (COPPA) and YouTube's policies require a video directed at children to be uploaded with `true`, and it is the **user's** call: if your software publishes on behalf of someone, ask them. YouTube then turns off features such as comments and personalised ads on that video.
+             *
+             *     It must be a JSON boolean. Anything else (`"yes"`, `"no"`, `1`) is not guessed: the publication is still created, in state `withErrors` with `publication_errors[].code = 2501`.
+             *
+             *     On an update: omit it to keep what was there, send `null` or `""` to go back to `false`.
+             */
+            made_for_kids?: boolean;
             /** @description Internal name for the publication. Useful for grouping; never shown on the social network. */
             name?: string;
             /**
@@ -4969,6 +5033,21 @@ export interface components {
              *     **On Pinterest it is the pin's title**, optional and at most 100 characters; over it the publication is created in state `withErrors` with `publication_errors[].code = 995` and `data.field = "title"`.
              */
             title?: string;
+            /**
+             * @description **Who can see the publication** when it goes out. Only on the networks that answer `visibility: true` in `GET /social_capabilities` (today `youtube`), and **deleted** on every other one.
+             *
+             *     - `public`: anyone. It is what applies when the field is omitted.
+             *     - `unlisted`: only people with the link. It does not show on the channel or in search.
+             *     - `private`: only the channel owner and the people they invite from YouTube Studio.
+             *
+             *     YouTube's policies require this to be **the user's choice**: if your software publishes on behalf of someone, ask them. A value the network does not accept does not fail the request: the publication is still created, in state `withErrors` with `publication_errors[].code = 2500`, whose `data` carries the `allowed` values. It is checked when the publication is **created**, so a scheduled video does not fail at 3 a.m. over a value that was already wrong.
+             *
+             *     If YouTube does not leave the video with the visibility that was asked for, the publication still ends up `sended` (the video is on the channel) and carries a warning in `publication_warnings` with `code = 2400`.
+             *
+             *     On an update: omit it to keep what was there, send `null` or `""` to go back to `public`.
+             * @enum {string}
+             */
+            visibility?: "public" | "unlisted" | "private";
         };
         PublicationsPublicationList: {
             publications: components["schemas"]["Publication"][];
@@ -5254,6 +5333,7 @@ export interface components {
          *     | `970` | Telegram is rate limiting the bot and the wait was longer than PlanVortex is willing to hold the request for. Carries `retry_after_seconds` in `data`: retry after it. |
          *     | `1101` | Invalid organization. |
          *     | `1501` | The comment's account could not be resolved. |
+         *     | `2600` | The network has comments but **this account** has none: a LinkedIn personal profile. LinkedIn does not let any app read a member's comments, so only pages have an inbox. Carries `social_network` and `id_account` in `data`. |
          */
         CommentsCommentError: {
             headers: {
@@ -7617,7 +7697,11 @@ export interface operations {
             query?: {
                 /** @description Only these accounts, by identifier. Repeat the parameter for more than one. */
                 accounts?: string[];
-                /** @description Only accounts whose network can do this. It is the same matrix `GET /social_capabilities` publishes, applied server-side: the way to ask for 'the accounts I can publish with' without keeping your own table of which network does what. */
+                /**
+                 * @description Only accounts whose network can do this. It is the same matrix `GET /social_capabilities` publishes, applied server-side: the way to ask for 'the accounts I can publish with' without keeping your own table of which network does what.
+                 *
+                 *     `comments` also looks at each account, not only at its network: a LinkedIn **personal profile** is left out, because only LinkedIn pages have a comment inbox. `total` counts the same way.
+                 */
                 capability?: "publications" | "messages" | "products" | "webhooks" | "persistent_menu" | "comments";
                 /** @description The limit of records will be retrieved (pagination) */
                 limit?: number;
@@ -12031,7 +12115,9 @@ export interface operations {
                      *         "comments": true,
                      *         "destinations": false,
                      *         "link": false,
-                     *         "reply_control": false
+                     *         "reply_control": false,
+                     *         "visibility": false,
+                     *         "made_for_kids": false
                      *       },
                      *       "google_business": {
                      *         "publications": false,
@@ -12042,7 +12128,9 @@ export interface operations {
                      *         "comments": true,
                      *         "destinations": false,
                      *         "link": false,
-                     *         "reply_control": false
+                     *         "reply_control": false,
+                     *         "visibility": false,
+                     *         "made_for_kids": false
                      *       },
                      *       "pinterest": {
                      *         "publications": true,
@@ -12053,7 +12141,9 @@ export interface operations {
                      *         "comments": false,
                      *         "destinations": true,
                      *         "link": true,
-                     *         "reply_control": false
+                     *         "reply_control": false,
+                     *         "visibility": false,
+                     *         "made_for_kids": false
                      *       },
                      *       "threads": {
                      *         "publications": true,
@@ -12064,7 +12154,9 @@ export interface operations {
                      *         "comments": true,
                      *         "destinations": false,
                      *         "link": false,
-                     *         "reply_control": true
+                     *         "reply_control": true,
+                     *         "visibility": false,
+                     *         "made_for_kids": false
                      *       }
                      *     }
                      */

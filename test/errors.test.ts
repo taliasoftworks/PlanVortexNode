@@ -184,6 +184,9 @@ describe("las familias del catalogo", () => {
         expect(errorFamilyForCode(810)).toBe("file");
         expect(errorFamilyForCode(1101)).toBe("organization");
         expect(errorFamilyForCode(2205)).toBe("integration");
+        //La versión por CUENTA del 945: la misma familia que él
+        expect(errorFamilyForCode(945)).toBe("publication");
+        expect(errorFamilyForCode(2600)).toBe("publication");
         expect(errorFamilyForCode(3000)).toBeUndefined();
     });
 });
