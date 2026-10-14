@@ -3610,6 +3610,11 @@ export interface components {
         /** @description The client's SUBSCRIPTION, which is not the same thing as the resources it grants: the numbers live in `plan_data`. */
         ClientsPlan: {
             /**
+             * @description How often the plan is billed. A yearly plan costs ten monthly fees, paid up front, and every resource in it is still counted per calendar month (AI and X credits included). Clients from before yearly billing existed read `month`. It means nothing on `free`.
+             * @enum {string}
+             */
+            billing_interval?: "month" | "year";
+            /**
              * Format: date-time
              * @description When the current billing period ends. A cancelled plan keeps working until then.
              */
