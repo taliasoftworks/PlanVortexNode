@@ -54,6 +54,10 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
     //Los COMENTARIOS siguen aquí porque sus 945-948 se llenaron, y van con ellos a `publication`:
     //el 2600 (esta cuenta no tiene bandeja, un perfil personal de LinkedIn) es la versión por
     //cuenta del 945, y separarlos daría dos clases para el mismo «aquí no hay comentarios».
+    //Los campos de publicación que no cabían en los 9xx (2500-2507: visibilidad, niños, y lo que
+    //exige la auditoría de TikTok). Casi todos viajan en `publication_errors`, pero el 2508 se
+    //LANZA: `accounts.publishSettings()` en una red que no los tiene.
+    { from: 2500, to: 2599, family: "publication" },
     { from: 2600, to: 2699, family: "publication" },
 ] as const;
 

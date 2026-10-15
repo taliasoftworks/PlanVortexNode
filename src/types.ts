@@ -359,6 +359,14 @@ export type Destination = Schemas["PublicationsDestination"];
  */
 export type PublicationDestination = Schemas["PublicationDestination"];
 
+/**
+ * Lo que una cuenta admite AL PUBLICAR, leído de la red en el momento: lo que devuelve
+ * `accounts.publishSettings()`. Hoy sólo TikTok, cuya guía de contenido pide enseñarlo antes de
+ * publicar. Los valores van en el vocabulario de la publicación: `visibility_options` es lo que
+ * se manda luego en `visibility`.
+ */
+export type PublishSettings = Schemas["PublicationsPublishSettings"];
+
 // ---------------------------------------------------------------------------------------------
 // Conexion de cuentas
 // ---------------------------------------------------------------------------------------------

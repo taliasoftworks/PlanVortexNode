@@ -119,10 +119,11 @@ describe("el paquete OpenAPI commiteado", () => {
      * 139 son los tableros de Pinterest: la lista de destinos de una cuenta y el detalle de uno. La
      * 140, `GET .../integrations/{id}/products`, el catalogo de una tienda WooCommerce conectada.
      * La 141 y la 142 son leer y confirmar una sesion de conexion: el selector de cuentas lo pone el
-     * integrador (`account_selection: "integrator"`).
+     * integrador (`account_selection: "integrator"`). La 143 es `GET .../accounts/{id}/publish_settings`,
+     * lo que una cuenta de TikTok admite al publicar (su auditoria de contenido).
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(142);
+        expect(operations(bundle.paths)).toHaveLength(143);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 

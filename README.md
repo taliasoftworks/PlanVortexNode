@@ -105,7 +105,7 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages`, `plannerTemplates` — all cached in memory per client |
 | `pv.clients`       | `list`, `iterate`, `get`, `update`, `updateAiSettings`, `withOrganizations`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                             |
 | `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`, `updateAiContext`, `updateSocialCredentials`, `deleteSocialCredentials`                            |
-| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `destinations`, `destination`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                    |
+| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `destinations`, `destination`, `publishSettings`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                    |
 | `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                   |
 | `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `updateByAccount`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                           |
 | `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`                                                                                       |
@@ -426,6 +426,7 @@ if you would rather branch on `error.family`.
 | 2000-2099            | Products                                               | `ProductError`      |
 | 2100-2199            | AI plans                                               | `AiPlanError`       |
 | 2200-2299            | Integrations                                           | `IntegrationError`  |
+| 2500-2599            | Publication fields: visibility, made for kids, TikTok settings (only 2508 is thrown) | `PublicationError`  |
 | 2600-2699            | Comments: an account with no inbox (a LinkedIn personal profile) | `PublicationError`  |
 
 A code outside every range — the catalogue grows — arrives as the base `PlanVortexError` with its

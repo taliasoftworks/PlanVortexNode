@@ -153,6 +153,31 @@ describe("accounts", () => {
         expect(one[0]?.query).toEqual({ refresh: ["true"] });
     });
 
+    it("lee lo que la cuenta admite al publicar (TikTok), desenvolviendo `publish_settings`", async () => {
+        const settings = {
+            social_network: "tiktok",
+            creator: { username: "nordwindcafe", nickname: "Nordwind Café" },
+            visibility_options: ["public", "friends", "private"],
+            interactions: {
+                comments: { disabled: false },
+                duet: { disabled: false },
+                stitch: { disabled: true },
+            },
+            max_video_duration_sec: 600,
+            can_post: true,
+        };
+        const calls = api.mock("get", `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/publish_settings`, {
+            publish_settings: settings,
+        });
+        const pv = api.client();
+
+        const read = await pv.accounts.publishSettings(ORG_ID, ACCOUNT_ID);
+
+        expect(read.visibility_options).toEqual(["public", "friends", "private"]);
+        expect(read.interactions.stitch?.disabled).toBe(true);
+        expect(calls).toHaveLength(1);
+    });
+
     /** Un token por instancia, no uno por llamada: el freno del servidor son 30 por minuto. */
     it("no pide un token por cada petición", async () => {
         api.mock("get", `/organizations/${ORG_ID}/accounts`, { accounts: [], total: 0 });

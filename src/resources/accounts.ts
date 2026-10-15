@@ -27,6 +27,7 @@ import type {
     EnableResult,
     Paginated,
     PersistentMenu,
+    PublishSettings,
     SocialNetwork,
 } from "../types.js";
 
@@ -406,6 +407,35 @@ export class AccountsResource extends Resource {
                 options,
             ),
             "destination",
+        );
+    }
+
+    /**
+     * Lo que la cuenta admite AL PUBLICAR, leído de la red en el momento. Hoy sólo TikTok: las
+     * redes con `publish_settings` en `catalog.socialCapabilities()`; en las demás contesta 2508.
+     *
+     * Es lo que la guía de TikTok pide enseñar antes de publicar: a qué cuenta va
+     * (`creator.nickname`), las privacidades que admite AHORA (`visibility_options`, a ofrecer sin
+     * ninguna elegida de antemano), las interacciones que el creador tiene cerradas en la app
+     * (`interactions.*.disabled`) y el vídeo más largo que puede publicar. Léelo cada vez que se
+     * abre tu pantalla de publicar: una cuenta pasa de pública a privada entre medias.
+     *
+     * `can_post: false` es que TikTok no acepta ahora un post de esta cuenta (`reason` trae su
+     * código): di que se intente más tarde en vez de mandarlo. Si TikTok no contesta es el 919,
+     * nunca una lista vacía.
+     */
+    async publishSettings(
+        idOrganization: string,
+        idAccount: string,
+        options: RequestOptions = {},
+    ): Promise<PublishSettings> {
+        return unwrapOne<PublishSettings>(
+            await this.httpGet<unknown>(
+                `${this.path(idOrganization, idAccount)}/publish_settings`,
+                undefined,
+                options,
+            ),
+            "publish_settings",
         );
     }
 
