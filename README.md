@@ -477,6 +477,17 @@ JSON: the bytes differ and the signature never matches. Either let `planvortexWe
 stream, or put `express.raw({ type: "application/json" })` in front of that one route. A global
 `express.json()` is what breaks it, and it breaks it silently.
 
+## Guides
+
+Longer write-ups on planvortex.com:
+
+- [Publishing to social media from Node.js without building one integration per network](https://planvortex.com/en/resources/publish-social-media-node-js)
+- [Meta access token expired? Why it lasts 60 days and how to refresh it](https://planvortex.com/en/resources/meta-access-token-expiry)
+- [Character limits across social APIs: .length lies, and it lies both ways](https://planvortex.com/en/resources/social-media-character-limits)
+- [How much does it cost to post on X with the API in 2026](https://planvortex.com/en/resources/x-api-pricing-2026)
+- [Is the LinkedIn API free? Pricing and posting access in 2026](https://planvortex.com/en/resources/linkedin-api-pricing-access)
+- [All articles](https://planvortex.com/en/resources)
+
 ## Development
 
 ```bash
