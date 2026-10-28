@@ -21,9 +21,11 @@ import {
     isCommentChange,
     isIntegrationErrorChange,
     isMessageChange,
+    isMessageEchoChange,
     parseWebhookPayload,
     planvortexWebhooks,
     verifyWebhookSignature,
+    WEBHOOK_EVENTS,
 } from "../src/webhooks/index.js";
 import type { WebhookChange, WebhookRequestLike, WebhookResponseLike } from "../src/webhooks/index.js";
 import { ORG_ID, ACCOUNT_ID, comment, upload } from "./helpers/fixtures.js";
@@ -338,6 +340,24 @@ describe("los tipos de los eventos", () => {
             expect(isAccountStateChange({ field } as WebhookChange)).toBe(false);
             expect(isMessageChange({ field } as WebhookChange)).toBe(true);
         }
+    });
+
+    /**
+     * WhatsApp con el numero tambien en la app del movil: lo que contesta el negocio desde la app.
+     * Es un mensaje NUESTRO, y por eso no entra en `isMessageChange`: un bot que contesta a cada
+     * mensaje no tiene que contestarle al propio negocio.
+     */
+    it("el eco de WhatsApp es su propio evento y no un mensaje que contestar", () => {
+        const { body, headers } = delivery([{
+            field: "message_echoes", id_account: ACCOUNT_ID, id_organization: "org1", social_network: "whatsapp",
+            id_contact: "c1", messageObj: { _id: "m1", text: "Te lo llevo mañana", contact_id: "c1" },
+        }]);
+        const [change] = handleWebhookRequest({ body, headers, secret: SECRET });
+
+        expect(WEBHOOK_EVENTS).toContain("message_echoes");
+        expect(isMessageEchoChange(change!)).toBe(true);
+        expect(isMessageChange(change!)).toBe(false);
+        if (isMessageEchoChange(change!)) expect(change.messageObj?.text).toBe("Te lo llevo mañana");
     });
 
     /**

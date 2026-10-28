@@ -4,6 +4,23 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [semantic](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-10-28
+
+### Added
+
+- **`message_echoes` webhook event (WhatsApp).** When a WhatsApp number is also used in the
+  WhatsApp Business app on a phone, what the business sends from the app arrives as
+  `field: "message_echoes"`, with the message in `messageObj` as one of **ours**: `contact_id` is
+  the person it was sent to and `from_contact_id` is absent. New type `MessageEchoChange` and
+  predicate `isMessageEchoChange()`. It is deliberately **not** part of `isMessageChange()`: a bot
+  that answers every incoming message must not answer the business itself. Store it, do not reply.
+- **`Message.edit_date` and `Message.deleted_date`.** A contact edited or deleted the message on
+  WhatsApp. An edited message already carries the new text; a deleted one has no text and no files.
+  No webhook event is sent for either: the message itself changes.
+- **`unsupported_message`** in `MessageType`: a WhatsApp message the API cannot show (a voice
+  note, a document, a sticker, or a type WhatsApp does not let the API read). It only ever arrives,
+  keeps the caption as `text` when there is one, and sending one is refused.
+
 ## [0.18.1] - 2026-10-25
 
 ### Changed

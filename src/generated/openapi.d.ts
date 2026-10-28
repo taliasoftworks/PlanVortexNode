@@ -2711,7 +2711,7 @@ export interface webhooks {
          *
          *     Three shapes travel in that array. A change on an **account** (`WebhookChange`) always carries `id_account`, `id_organization` and `social_network`. A change on an **integration** (`IntegrationWebhookChange`) and the end of an **AI plan** (`AiPlanWebhookChange`) carry none of those, because they hang off the organization and not off any account.
          *
-         *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments`, `integration_error`, `ai_plan_generated` and `ai_plan_failed`.
+         *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `message_echoes`, `comments`, `integration_error`, `ai_plan_generated` and `ai_plan_failed`.
          *
          *     ### Comments
          *
@@ -2728,6 +2728,12 @@ export interface webhooks {
          *     A plan that hits a transient error goes back to the queue and is retried. That is not an end and sends nothing, so each plan sends **one** of these two events, never a `failed` followed by a `generated`. A plan generated with notices (`warnings` above zero) is still `ai_plan_generated`: it is usable, and the notices are in the plan.
          *
          *     The event goes to **every** app of the client that has a `webhook_url`, not only to the one that created the plan. And it is not retried: if your endpoint was down when the plan finished, the `GET` still tells you how it ended, so on startup read the plans you were waiting for.
+         *
+         *     ### WhatsApp replies sent from the phone
+         *
+         *     A WhatsApp number can work in the **WhatsApp Business app** on a phone and in PlanVortex at the same time. What the business sends from the app arrives as `field: "message_echoes"`, with the message in `messageObj` as one of **ours**: `contact_id` is the person it was sent to and `from_contact_id` is absent. Store it in the thread; do not answer it. It does not open WhatsApp's 24-hour window.
+         *
+         *     When a contact edits or deletes a message, no event is sent: the message itself changes, and the next read returns it with `edit_date` or `deleted_date`.
          *
          *     ### Verifying the signature
          *
@@ -3411,7 +3417,7 @@ export interface components {
              *
              *     **The body is an array of changes, not a single object**, and it carries two signature headers computed with this app's secret over the **raw** body: `x-hub-signature` (`sha1=<hex>`) and `x-hub-signature-256` (`sha256=<hex>`). Verify against the bytes you received — parsing the JSON and re-serialising it changes them and the signature will not match.
              *
-             *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `comments`, `integration_error`, `ai_plan_generated` and `ai_plan_failed`. The payload is documented in the `comments` specification. **Every** app of the client that has a `webhook_url` receives every event, not only the app whose call caused it: with two apps, each event arrives twice. Delivery is best effort: PlanVortex does not retry a webhook that fails.
+             *     The events delivered today are `new_account`, `change_state_account`, `messages`, `messaging_postbacks`, `messaging_seen`, `messaging_error`, `message_echoes`, `comments`, `integration_error`, `ai_plan_generated` and `ai_plan_failed`. The payload is documented in the `comments` specification. **Every** app of the client that has a `webhook_url` receives every event, not only the app whose call caused it: with two apps, each event arrives twice. Delivery is best effort: PlanVortex does not retry a webhook that fails.
              */
             webhook_url?: string;
         };
@@ -3889,15 +3895,16 @@ export interface components {
             /**
              * @description What kind of change this is. **Treat it as an open list** and ignore what you do not handle: it grows with the product.
              *
-             *     - `new_account` / `change_state_account`: an account was connected, or its state changed — it stopped working, its token was refreshed, it was disconnected. On `telegram` this is the **only** way to hear about a connection: there is no callback there, so no request of yours ever returns that account.
+             *     - `new_account` / `change_state_account`: an account was connected, or its state changed — it stopped working, its token was refreshed, it was disconnected. A WhatsApp number disconnected from the WhatsApp Business app (or by Meta, after about 14 days without the phone using the app) arrives here with `error_code` 717. On `telegram` this is the **only** way to hear about a connection: there is no callback there, so no request of yours ever returns that account.
              *     - `messages`: a message came in. It travels in `messageObj`.
              *     - `messaging_postbacks`: the contact pressed a button or a quick reply. Also in `messageObj`.
              *     - `messaging_seen`: the contact read the conversation. `messageObj` carries the message they read, when we still have it.
              *     - `messaging_error`: the network refused a message we sent. The reason is in `messageObj.message_errors`.
+             *     - `message_echoes`: WhatsApp only, when the number is also used in the **WhatsApp Business app** on a phone. The business replied from the app, and the reply travels in `messageObj` as **our** message (`contact_id` is set, `from_contact_id` is not). It is a separate `field` on purpose: a bot that answers every `messages` must not answer the business itself.
              *     - `comments`: a comment came in. It travels in `commentObj`, never in `messageObj`.
              * @enum {string}
              */
-            field: "new_account" | "change_state_account" | "messages" | "messaging_postbacks" | "messaging_seen" | "messaging_error" | "comments";
+            field: "new_account" | "change_state_account" | "messages" | "messaging_postbacks" | "messaging_seen" | "messaging_error" | "message_echoes" | "comments";
             id_account: string;
             /** @description Only for messaging fields. A comment has no contact: its author is not someone you can write to. */
             id_contact?: string;
@@ -4470,6 +4477,16 @@ export interface components {
             contact_id?: string | components["schemas"]["Contact"];
             /** Format: date-time */
             creation_date: string;
+            /**
+             * Format: date-time
+             * @description When the contact **deleted** this message for everyone (WhatsApp allows it for two days). The message stays in the thread with no `text` and no files.
+             */
+            deleted_date?: string;
+            /**
+             * Format: date-time
+             * @description When the contact **edited** this message on the network (WhatsApp allows it for 15 minutes). `text` is already the edited text; the original is not kept.
+             */
+            edit_date?: string;
             /** @description Identifier of this message on the network. */
             element_external_id?: string;
             /** @description Set when the **contact** wrote to us. */
@@ -4564,9 +4581,11 @@ export interface components {
         };
         /**
          * @description What kind of message this is. `simple_message` and `file_message` work everywhere; the rest are network-specific shapes.
+         *
+         *     `unsupported_message` only ever **arrives**: a WhatsApp message that cannot be shown through the API (a voice note, a document, a sticker, or a type WhatsApp does not let the API read). It carries no files, keeps the caption as `text` when there is one, and may carry the network's reason in `message_errors`. If the number is also in the WhatsApp Business app, the message can be read there. Sending one is refused.
          * @enum {string}
          */
-        MessageType: "simple_message" | "file_message" | "comment_message" | "publication_message" | "quick_reply_message" | "button_message" | "elements_message" | "postback_message" | "template_message" | "interactive_message";
+        MessageType: "simple_message" | "file_message" | "comment_message" | "publication_message" | "quick_reply_message" | "button_message" | "elements_message" | "postback_message" | "template_message" | "interactive_message" | "unsupported_message";
         /**
          * @description Metrics translated to a **common vocabulary** shared by every network, which is what makes two networks comparable and summable (each network names them differently: `page_post_engagements`, `total_interactions`, `views`…).
          *

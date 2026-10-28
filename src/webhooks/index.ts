@@ -55,6 +55,7 @@ export const WEBHOOK_EVENTS = [
     "messaging_postbacks",
     "messaging_seen",
     "messaging_error",
+    "message_echoes",
     "comments",
     "integration_error",
     "ai_plan_generated",
@@ -97,6 +98,22 @@ export interface MessageChange extends AccountWebhookChangeBase {
     field: "messages" | "messaging_postbacks" | "messaging_seen" | "messaging_error";
     messageObj?: Message;
     /** El contacto del otro lado. Un comentario no tiene, y por eso aquí sí y allí no. */
+    id_contact?: string;
+}
+
+/**
+ * WhatsApp, cuando el número se usa también en la **app WhatsApp Business** del móvil: el negocio
+ * contestó desde la app. `messageObj` es un mensaje **nuestro** —lleva `contact_id`, el contacto al
+ * que se escribió, y no `from_contact_id`— y llega poblado, como en {@link MessageChange}.
+ *
+ * Es un evento aparte a propósito, y {@link isMessageChange} **no** lo incluye: un bot que contesta a
+ * cada mensaje que entra no tiene que contestarle al propio negocio. Guárdalo en el hilo y ya. No
+ * abre la ventana de 24 horas de WhatsApp.
+ */
+export interface MessageEchoChange extends AccountWebhookChangeBase {
+    field: "message_echoes";
+    messageObj?: Message;
+    /** El contacto al que escribió el negocio */
     id_contact?: string;
 }
 
@@ -185,6 +202,7 @@ export interface UnknownWebhookChange {
 export type WebhookChange =
     | AccountStateChange
     | MessageChange
+    | MessageEchoChange
     | CommentChange
     | IntegrationErrorChange
     | AiPlanChange
@@ -207,6 +225,14 @@ export function isAccountStateChange(change: WebhookChange): change is AccountSt
 /** Algo pasó en la mensajería. Incluye el visto y el rechazo de la red, no sólo el mensaje nuevo. */
 export function isMessageChange(change: WebhookChange): change is MessageChange {
     return MESSAGE_EVENTS.has(change.field);
+}
+
+/**
+ * El negocio contestó desde la app WhatsApp Business del móvil. No es un mensaje entrante: no lo
+ * contestes. {@link isMessageChange} no lo incluye.
+ */
+export function isMessageEchoChange(change: WebhookChange): change is MessageEchoChange {
+    return change.field === "message_echoes";
 }
 
 /** Llegó un comentario. */

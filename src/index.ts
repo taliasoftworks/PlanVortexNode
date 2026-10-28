@@ -167,6 +167,7 @@ export type {
     CommentChange,
     IntegrationErrorChange,
     MessageChange,
+    MessageEchoChange,
     UnknownWebhookChange,
     WebhookAlgorithm,
     WebhookChange,
