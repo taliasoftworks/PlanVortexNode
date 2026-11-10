@@ -113,6 +113,27 @@ export class ContractHarness {
     }
 
     /**
+     * Un ARCHIVO como respuesta: bytes y cabeceras, no JSON. Es lo que devuelven las rutas de
+     * archivos de mensajes y comentarios, que reenvían lo que da la red tal cual.
+     */
+    mockFile(method: Method, path: string, bytes: Uint8Array | string, headers: Record<string, string>): Captured[] {
+        const stub: Stub = { description: `${method.toUpperCase()} ${path}`, used: false };
+        this.stubs.push(stub);
+        const captured: Captured[] = [];
+
+        this.server.use(
+            route[method](`${BASE_URL}${path}`, async ({ request }) => {
+                stub.used = true;
+                const call = await capture(request);
+                captured.push(call);
+                this.calls.push(call);
+                return new HttpResponse(bytes, { status: 200, headers });
+            }),
+        );
+        return captured;
+    }
+
+    /**
      * Una respuesta distinta por llamada, para probar la paginación.
      *
      * La última se repite si se pide una vez más de las declaradas, en vez de reventar: lo que un

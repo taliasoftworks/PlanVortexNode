@@ -120,10 +120,12 @@ describe("el paquete OpenAPI commiteado", () => {
      * 140, `GET .../integrations/{id}/products`, el catalogo de una tienda WooCommerce conectada.
      * La 141 y la 142 son leer y confirmar una sesion de conexion: el selector de cuentas lo pone el
      * integrador (`account_selection: "integrator"`). La 143 es `GET .../accounts/{id}/publish_settings`,
-     * lo que una cuenta de TikTok admite al publicar (su auditoria de contenido).
+     * lo que una cuenta de TikTok admite al publicar (su auditoria de contenido). La 144 y la 145
+     * son los ARCHIVOS que llegan de la red, de un mensaje y de un comentario, que PlanVortex no
+     * guarda y pide a la red al abrirlos (`messages.downloadFile` y `comments.downloadFile`).
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(143);
+        expect(operations(bundle.paths)).toHaveLength(145);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 

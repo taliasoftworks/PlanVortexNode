@@ -108,8 +108,8 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 | `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `destinations`, `destination`, `publishSettings`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                    |
 | `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                   |
 | `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `updateByAccount`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                           |
-| `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`                                                                                       |
-| `pv.messages`      | `conversations`, `iterateConversations`, `conversationTotals`, `list`, `iterate`, `send`, `unreadCount`, `removeByAccount`, `templates`, `createTemplate`, `deleteTemplate`                                        |
+| `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`, `downloadFile`                                                                       |
+| `pv.messages`      | `conversations`, `iterateConversations`, `conversationTotals`, `list`, `iterate`, `send`, `unreadCount`, `removeByAccount`, `templates`, `createTemplate`, `deleteTemplate`, `downloadFile`                        |
 | `pv.contacts`      | `list`, `iterate`, `get`, `create`, `update`, `merge`, `remove`, `removeAll`                                                                                                                                       |
 | `pv.products`      | `list`, `iterate`, `get`, `create`, `catalogs`, `createCatalog`                                                                                                                                                           |
 | `pv.integrations`  | `providers`, `list`, `iterate`, `get`, `connectLink`, `connect`, `reconnect`, `update`, `remove`, `pickerConfig`, `products`                                                                                       |
@@ -237,6 +237,23 @@ await pv.messages.send(orgId, accountId, conversations[0].contact._id, {
 
 Message templates are **WhatsApp only**. Every other network answers HTTP 500 with `code: 500`
 rather than the 1502 you would expect, so check the account's network first.
+
+### Files that arrive from the network
+
+A photo, a voice note or a document in a private message, and a photo or a sticker in a comment,
+**are not stored by PlanVortex**. They stay on the network, and `files_urls` says where each one is.
+When an entry has a `url`, load it directly; when it has none (every WhatsApp and Telegram file, a
+LinkedIn image, a Bluesky video) or the `url` stopped loading, ask PlanVortex for it:
+
+```ts
+const file = await pv.messages.downloadFile(orgId, accountId, message._id, 0);
+// or: await pv.comments.downloadFile(orgId, comment._id, 0);
+console.log(file.contentType, file.fileName, file.data.byteLength);
+```
+
+The network decides how long a file lives: WhatsApp lets go of one 7 days after it arrived, and from
+then on the answer is error 1515. A `disposition` of `"attachment"` is a document somebody outside
+the business sent: don't render it inside your own pages.
 
 ## Connecting a social account
 
@@ -420,7 +437,7 @@ if you would rather branch on `error.family`.
 | 1100-1111            | Organizations                                          | `OrganizationError` |
 | 1200-1207            | Roles                                                  | `PlanVortexError`   |
 | 1300-1308, 1400-1408 | Plan quota exhausted, at client and organization level | `PlanLimitError`    |
-| 1500-1512            | Messaging                                              | `MessagingError`    |
+| 1500-1516            | Messaging                                              | `MessagingError`    |
 | 1600-1601            | Contacts                                               | `ContactError`      |
 | 1900-1906            | Payments                                               | `PlanVortexError`   |
 | 2000-2099            | Products                                               | `ProductError`      |

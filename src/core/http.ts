@@ -137,8 +137,12 @@ export interface HttpRequest {
      * nada — hoy, `POST /oauth/token`.
      */
     idempotent?: boolean;
-    /** `none` salta el parseo del cuerpo. Por defecto se intenta JSON. */
-    parse?: "json" | "none";
+    /**
+     * `none` salta el parseo del cuerpo y `binary` lo devuelve como bytes (`Uint8Array`), que es lo
+     * que hace falta para un archivo. Por defecto se intenta JSON. Un error se lee SIEMPRE como
+     * JSON, sea cual sea este valor: el cuerpo de un 4xx es el sobre de error de la API.
+     */
+    parse?: "json" | "none" | "binary";
 }
 
 export interface HttpResponse<T> {
@@ -408,6 +412,9 @@ export class HttpClient {
     private async parseBody(response: Response, request: HttpRequest): Promise<unknown> {
         if (request.parse === "none" || response.status === 204) {
             return undefined;
+        }
+        if (request.parse === "binary") {
+            return new Uint8Array(await response.arrayBuffer());
         }
         return this.readBody(response);
     }

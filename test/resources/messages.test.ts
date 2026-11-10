@@ -240,3 +240,55 @@ describe("messages plantillas", () => {
         });
     });
 });
+
+/**
+ * Los archivos que llegan por mensaje privado NO los guarda PlanVortex: la ruta los pide a la red
+ * y los reenvía. Aquí se fija que la librería los devuelve en bytes, con el tipo y el nombre de las
+ * cabeceras, y que un error sigue siendo el error tipado aunque la llamada pidiera bytes.
+ */
+describe("messages.downloadFile", () => {
+    const MESSAGE_ID = "66d04a6a427f4c43b9d97f99";
+    const FILE = `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/messages/${MESSAGE_ID}/files/1`;
+
+    it("devuelve los bytes, el tipo real y el nombre UTF-8 de `Content-Disposition`", async () => {
+        const calls = api.mockFile("get", FILE, "%PDF-1.4\n", {
+            "content-type": "application/pdf",
+            "content-disposition": `attachment; filename="presupuesto a_o.pdf"; filename*=UTF-8''presupuesto%20a%C3%B1o.pdf`,
+        });
+        const pv = api.client();
+
+        const file = await pv.messages.downloadFile(ORG_ID, ACCOUNT_ID, MESSAGE_ID, 1);
+
+        expect(calls).toHaveLength(1);
+        expect(new TextDecoder().decode(file.data)).toBe("%PDF-1.4\n");
+        expect(file.contentType).toBe("application/pdf");
+        expect(file.fileName).toBe("presupuesto año.pdf");
+        expect(file.disposition).toBe("attachment");
+    });
+
+    it("una nota de voz va `inline` y sin los parámetros del tipo", async () => {
+        api.mockFile("get", FILE, "OggS", { "content-type": "audio/ogg; codecs=opus", "content-disposition": "inline" });
+        const pv = api.client();
+
+        const file = await pv.messages.downloadFile(ORG_ID, ACCOUNT_ID, MESSAGE_ID, 1);
+
+        expect(file.contentType).toBe("audio/ogg");
+        expect(file.fileName).toBeUndefined();
+        expect(file.disposition).toBe("inline");
+    });
+
+    it("WhatsApp ya soltó el archivo: el 1515 llega tipado, no como bytes", async () => {
+        api.mock("get", FILE, { code: 1515, message: "The network no longer has this file", data: { social_network: "whatsapp" } }, 400);
+        const pv = api.client();
+
+        const error = await pv.messages.downloadFile(ORG_ID, ACCOUNT_ID, MESSAGE_ID, 1).catch((e: unknown) => e);
+
+        expect(error).toMatchObject({ code: 1515, data: { social_network: "whatsapp" } });
+    });
+
+    it("una posición que no es un entero desde 0 no sale a la red", async () => {
+        const pv = api.client();
+        await expect(pv.messages.downloadFile(ORG_ID, ACCOUNT_ID, MESSAGE_ID, 1.5)).rejects.toThrow(TypeError);
+        await expect(pv.messages.downloadFile(ORG_ID, ACCOUNT_ID, MESSAGE_ID, -1)).rejects.toThrow(TypeError);
+    });
+});

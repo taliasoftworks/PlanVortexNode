@@ -18,6 +18,40 @@ export interface RequestSender {
 
 export type Query = Record<string, QueryValue>;
 
+/**
+ * Un archivo que llegó de la red (la foto de un mensaje privado, el sticker de un comentario),
+ * pedido a PlanVortex, que lo pide a la red en ese momento y lo reenvía sin guardar una copia.
+ */
+export interface DownloadedFile {
+    /** Los bytes, tal cual los dio la red. */
+    data: Uint8Array;
+    /** El `Content-Type` real del archivo. Es el que manda, no el `mime_type` que se apuntó. */
+    contentType: string;
+    /** El nombre del documento, cuando la red lo da. */
+    fileName: string | undefined;
+    /**
+     * `inline` para imágenes, vídeos y audios; `attachment` para todo lo demás. Un documento lo
+     * mandó alguien de fuera del negocio: no lo pintes dentro de tus propias páginas.
+     */
+    disposition: "inline" | "attachment";
+}
+
+/** El nombre de `Content-Disposition`: primero el UTF-8 (`filename*`), si no el ASCII. */
+function dispositionFileName(header: string | null): string | undefined {
+    if (!header) {
+        return undefined;
+    }
+    const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+    if (encoded?.[1]) {
+        try {
+            return decodeURIComponent(encoded[1]);
+        } catch {
+            //Mal codificado: vale el ASCII de abajo
+        }
+    }
+    return /filename="([^"]*)"/i.exec(header)?.[1];
+}
+
 /** Opciones por llamada que cualquier método acepta: cancelar y ajustar el timeout. */
 export interface RequestOptions {
     signal?: AbortSignal | undefined;
@@ -47,6 +81,28 @@ export abstract class Resource {
      * nombre obvio de mandar un mensaje, y con el genérico ocupando `send` la subclase no
      * compilaba.
      */
+    /**
+     * Un archivo, en bytes y con lo que dicen sus cabeceras. Lo usan las dos rutas de archivos de la
+     * API, la de mensajes y la de comentarios. Lleva `_` al final por lo mismo que los verbos llevan
+     * `http` delante: el método público de los recursos se llama `downloadFile`.
+     */
+    protected async downloadFile_(path: string, options: RequestOptions = {}): Promise<DownloadedFile> {
+        const response = await this.client.request<Uint8Array>({
+            method: "GET",
+            path,
+            parse: "binary",
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+            ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+        });
+        const disposition = response.headers?.get("content-disposition") ?? null;
+        return {
+            data: response.data ?? new Uint8Array(),
+            contentType: (response.headers?.get("content-type") ?? "application/octet-stream").split(";")[0]!.trim(),
+            fileName: dispositionFileName(disposition),
+            disposition: disposition?.toLowerCase().startsWith("inline") ? "inline" : "attachment",
+        };
+    }
+
     protected httpGet<T>(path: string, query?: Query, options?: RequestOptions): Promise<T> {
         return this.dispatch<T>({ method: "GET", path, ...(query ? { query } : {}) }, options);
     }
@@ -118,6 +174,18 @@ export function requireId(value: string, name: string): string {
         throw new TypeError(`Falta ${name}.`);
     }
     return value;
+}
+
+/**
+ * La posición de un archivo en `files_urls`: un entero desde 0. Se comprueba aquí y no en el
+ * servidor porque un `1.5` o un `NaN` acabarían en la URL como `/files/1.5` y el error que
+ * volviera (un 1516 o un 2602) no diría que el fallo es del argumento.
+ */
+export function fileIndex(index: number): number {
+    if (!Number.isInteger(index) || index < 0) {
+        throw new TypeError(`index tiene que ser un entero desde 0, y es ${String(index)}.`);
+    }
+    return index;
 }
 
 /** `{success: true}` es lo que devuelve todo lo que no tiene nada que contar. */

@@ -19,8 +19,8 @@
  *    está implementado, así que lo que vuelve es un 500 con `code: 500` — no el 1502 que cabría
  *    esperar (§ {@link MessagesResource.templates}).
  */
-import { Resource, requireId } from "./base.js";
-import type { RequestOptions, SuccessResponse } from "./base.js";
+import { Resource, fileIndex, requireId } from "./base.js";
+import type { DownloadedFile, RequestOptions, SuccessResponse } from "./base.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
 import type {
@@ -311,6 +311,32 @@ export class MessagesResource extends Resource {
         await this.httpDelete<SuccessResponse>(
             `${this.accountPath(idOrganization, idAccount)}/message_templates`,
             { template_id: templateId, template_name: templateName },
+            options,
+        );
+    }
+
+    /**
+     * Un archivo de un mensaje que llegó de la red (`message_options.files_urls[index]`): una foto,
+     * un vídeo, una nota de voz, un documento o un sticker. PlanVortex no lo guarda: lo pide a la red
+     * en ese momento y lo reenvía sin quedarse una copia.
+     *
+     * En WhatsApp es la ÚNICA forma de abrir un archivo: ninguno trae `url`, porque WhatsApp solo los
+     * entrega con el token de la cuenta. En Instagram y Messenger hace falta cuando el `url` del CDN
+     * de Meta caducó. WhatsApp suelta un archivo 7 días después de que llegara: a partir de ahí es un
+     * error 1515. Un 1516 es que el mensaje no es de esa cuenta o no tiene archivo en esa posición.
+     *
+     * Un `disposition: "attachment"` es un documento que mandó alguien de fuera: no lo pintes dentro
+     * de tus propias páginas.
+     */
+    async downloadFile(
+        idOrganization: string,
+        idAccount: string,
+        idMessage: string,
+        index: number,
+        options: RequestOptions = {},
+    ): Promise<DownloadedFile> {
+        return this.downloadFile_(
+            `${this.accountPath(idOrganization, idAccount)}/messages/${requireId(idMessage, "idMessage")}/files/${fileIndex(index)}`,
             options,
         );
     }

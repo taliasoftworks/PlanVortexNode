@@ -991,7 +991,7 @@ export interface paths {
          * Re-enable a disconnected account
          * @description Brings back an account that was removed, without going through the authorization again — as long as its stored token still works.
          *
-         *     It takes a **slot of the plan**, so it fails with error 706 when the organization is already at its account limit. It also turns the network's webhooks back on, on any plan but the free one.
+         *     It takes a **slot of the plan**, so it fails with error 706 when the organization is already at its account limit. It also turns the network's webhooks back on, on any plan but the free one. On the free plan a `whatsapp` account that is not active cannot be enabled (error 516), because its chat and its templates need a paid plan. One that is already active can still be reconnected.
          *
          *     **On `telegram` you normally never call this.** That network's accounts are born active — there is no authorization return in which to choose them, so PlanVortex takes the slot when the bot is added to the channel. The one case left is a channel that arrived while the plan was full: it stays off until a slot frees up, and this is what turns it on.
          *
@@ -1017,6 +1017,10 @@ export interface paths {
          *
          *     The shape of a template is the network's own: PlanVortex does not normalise it.
          *
+         *     **A rejected template says why.** WhatsApp templates carry `rejected_reason` (`INVALID_FORMAT`, `PROMOTIONAL`, `TAG_CONTENT_MISMATCH`...) next to their `status`, as WhatsApp sends it.
+         *
+         *     **`health` says whether the account can start conversations at all.** A template is only needed outside the 24-hour window, which is exactly what a failed payment method or an unverified business blocks, and neither of them fails when you create or approve a template: the message is simply never delivered. `health` is WhatsApp's own status for the phone number, reduced to `can_send_message` (`AVAILABLE`, `LIMITED`, `BLOCKED`), the `issues` behind it with WhatsApp's code (141006 = payment method, 141010 = business not verified) and `notes`. When it can't be read the field is absent, which means unknown, not healthy.
+         *
          *     **WhatsApp only.** No other network implements message templates: asking any of them returns HTTP 500 with `code: 500` (an unhandled server error), not the 1502 you would expect. Check `messages` in `GET /social_capabilities` and that the account is WhatsApp before calling.
          */
         get: operations["getMessageTemplates"];
@@ -1026,6 +1030,10 @@ export interface paths {
          * @description Sends a template to the network for approval. The body travels to the network as it is, so its fields are the network's (for WhatsApp: `name`, `language`, `category`, `components`).
          *
          *     **Approval is not immediate.** The template comes back in a pending state and only becomes usable when the network approves it, which takes minutes or hours and can be refused.
+         *
+         *     **WhatsApp templates are checked before they leave.** WhatsApp rejects a badly formatted template in the same second with `INVALID_FORMAT` and no explanation, so PlanVortex checks the rules it documents first and answers **1513** with `data.field` and `data.reason`: `invalid_name` (lowercase letters, numbers and underscores only), `missing_language`, `missing_body`, `body_too_long` (1,024 characters), `malformed_variable`, `variables_not_sequential`, `variable_at_edge` (the text can't start or end with a variable), `adjacent_variables` and `missing_examples`. **A body with variables needs one example per variable** in `example.body_text`, as in the example below.
+         *
+         *     If WhatsApp refuses the template when it is created (a language it doesn't have, a name already in use), the answer is **1514** with WhatsApp's own `code`, `subcode` and `message` in `data`.
          *
          *     **WhatsApp only.** No other network implements message templates: asking any of them returns HTTP 500 with `code: 500` (an unhandled server error), not the 1502 you would expect. Check `messages` in `GET /social_capabilities` and that the account is WhatsApp before calling.
          */
@@ -1091,6 +1099,35 @@ export interface paths {
          *     • `quick_reply_message`, `button_message`, `elements_message` and `interactive_message` are Meta-only shapes and each one requires its own block inside `message_options`.
          */
         post: operations["createMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{id_organization}/accounts/{id_account}/messages/{id_message}/files/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One file of a message, fetched from the network
+         * @description Files that arrive in a message (a photo, a video, a voice note, a document, a sticker) **are not stored by PlanVortex**: they stay on the network, and `message_options.files_urls` says where each one is.
+         *
+         *     • **With `url`** (Instagram and Messenger): Meta's own CDN link. It works until Meta expires it.
+         *     • **Without `url`** (every WhatsApp file): WhatsApp only hands a file over with the account's token, through a link that lasts five minutes, so there is no link to give you.
+         *
+         *     Either way, this endpoint asks the network for the file now and streams it back without keeping a copy. `index` is the file's position in `files_urls`. `message_options.files` holds only the files **you** sent from PlanVortex, which are uploads.
+         *
+         *     **The network decides how long a file lives.** WhatsApp lets go of a file 7 days after it arrived, and Meta drops one when the message or the story is deleted. After that the answer is **1515**, with `data.social_network`; on a number that also runs the WhatsApp Business app, the file is still there. **1516** means the message is not from this account, or has no file at that position.
+         *
+         *     Images, videos and audio come back `inline`. Anything else (a PDF, a spreadsheet, an HTML file, an SVG) comes back as an `attachment`: someone outside the business sent it, so don't render it inside your own pages.
+         */
+        get: operations["getMessageFile"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1419,6 +1456,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organizations/{id_organization}/comments/{id_comment}/files/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One file of a comment, fetched from the network
+         * @description Files in a comment (a photo, a GIF, a sticker, a video) **are not stored by PlanVortex**: they stay on the network, and the comment's `files_urls` says where each one is. This endpoint asks the network for the file now and streams it back without keeping a copy. `index` is the file's position in `files_urls`.
+         *
+         *     You need it when a file has no `url`, or when its `url` stopped loading:
+         *
+         *     • **LinkedIn** gives only the image's id, never a link.
+         *     • **Telegram**'s download link carries the bot's token, so it never leaves PlanVortex. A bot can only download up to 20 MB: past that the answer is **1515** with `data.reason: "too_big"`, and the file is only visible in Telegram.
+         *     • **Bluesky** videos are an HLS playlist that browsers other than Safari do not play; this returns the video file itself.
+         *     • **Facebook, Threads and Discord** links expire; this reads the comment again and returns the file behind a fresh link.
+         *     • **X** links do not expire, and reading a post again costs money, so X is not re-read: if its `url` no longer loads, the post was deleted and the answer is **1515**.
+         *
+         *     **1515** means the network no longer has the file (`data.social_network`), and **2602** that the comment has no file at that position. A comment of another organization is **1102**.
+         *
+         *     Images, videos and audio come back `inline`. Anything else comes back as an `attachment`: someone outside the business posted it, so don't render it inside your own pages.
+         *
+         *     Requires the `comments:read` permission (`client_organization_comments:read` for apps) and a paid plan.
+         */
+        get: operations["getCommentFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organizations/{id_organization}/comments/{id_comment}/replies": {
         parameters: {
             query?: never;
@@ -1489,6 +1560,8 @@ export interface paths {
          * @description The authorization URL of each network, so the user can connect an account to this organization.
          *
          *     **A network that cannot produce a link simply does not appear.** That is a legitimate answer, not a failure: it is what happens with `discord` in an organization that has not saved its own bot credentials yet (see `PUT /organizations/{id_organization}/social_credentials/{social_network}`).
+         *
+         *     **On the free plan `whatsapp` does not appear either**, unless the organization already has an active WhatsApp account, which has to stay reconnectable. Its chat and its templates need a paid plan, so enabling a new account answers error 516. Asking for it by name gets you an empty list, not an error.
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
          *
@@ -2335,7 +2408,7 @@ export interface paths {
          *
          *     **It connects once.** As soon as an `account-connect` succeeds, the token stops being able to connect anything else and answers error 543; the `enable` calls that finish that same connection keep working until it expires. Issue a new one per connection — they are free and immediate.
          *
-         *     **If you pass `social_network`, the token is bound to that network** and will not connect any other (error 544). Leave it out to let the person pick.
+         *     **If you pass `social_network`, the token is bound to that network** and will not connect any other (error 544). Leave it out to let the person pick. On the free plan, asking for `whatsapp` answers error 516 unless the organization already has an active WhatsApp account to reconnect: its chat and its templates need a paid plan.
          *
          *     **Or show the account picker yourself** with `account_selection=integrator`. By default PlanVortex shows the screen where the person picks which accounts to enable, and only then sends them to your `redirect_uri`. In this mode that screen is yours:
          *
@@ -3771,6 +3844,12 @@ export interface components {
              *     • A Telegram comment lives in a **different chat** from the post it answers (the channel's linked discussion group), so it needs two ids at once and travels as `{thread}/{message}`: replying wants the first, deleting wants the second.
              */
             external_id: string;
+            /**
+             * @description The comment's files: a photo, a GIF, a sticker, a video. **PlanVortex does not store them** (see `SocialFileUrl`): open `url` when there is one, and when there is not, or it stops loading, fetch the file with `GET /organizations/{id_organization}/comments/{id_comment}/files/{index}`.
+             *
+             *     Facebook, Threads, LinkedIn, X, Bluesky, Discord and Telegram give a comment's files, and on Google Business they are the photos and videos of a review. Instagram and YouTube do not expose them in their APIs, so there the list is always empty. A comment that is only a photo has an empty `text` and one file here.
+             */
+            files_urls?: components["schemas"]["SocialFileUrl"][];
             /** @description Hidden on the network. A hidden comment is never swept as deleted: on YouTube, hiding one makes the API stop returning it forever, and without that exception hiding would be indistinguishable from deleting. */
             hidden: boolean;
             /**
@@ -3807,7 +3886,7 @@ export interface components {
             /** @description Absent when the network does not publish it — not zero */
             reply_count?: number;
             social_network: components["schemas"]["CommentsCommentNetworkName"];
-            /** @description **May legitimately be empty.** A stars-only review carries no text at all, so render `rating` alongside it and never assume a blank comment is a loading failure. */
+            /** @description **May legitimately be empty.** A stars-only review carries no text at all, and a comment can be only a photo or a sticker (see `files_urls`), so render `rating` and the files alongside it and never assume a blank comment is a loading failure. */
             text: string;
         };
         /** @description What one network lets you do to a comment. Four booleans and never fewer: an absent key would be indistinguishable from an oversight. */
@@ -4243,7 +4322,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1308 client plan · 1400-1408 organization plan · 1500-1512 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2500-2599 publication fields, the ones that no longer fit in 900-996 (visibility, made for kids, TikTok's interactions and commercial content) · 2600-2699 comments, the ones that no longer fit in 945-948. */
+            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1309 client plan · 1400-1408 organization plan · 1500-1516 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2500-2599 publication fields, the ones that no longer fit in 900-996 (visibility, made for kids, TikTok's interactions and commercial content) · 2600-2699 comments, the ones that no longer fit in 945-948. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -4508,11 +4587,8 @@ export interface components {
         MessageOptions: {
             /** @description The uploads attached to the message. **Populated** wherever the message itself is: the messages list and webhook deliveries carry whole uploads, everything else carries their identifiers. Handle both. */
             files: (string | components["schemas"]["Upload"])[];
-            /** @description Files already hosted somewhere else. Filled in by PlanVortex when a message arrives from the network. */
-            files_urls: {
-                mime_type?: string;
-                url?: string;
-            }[];
+            /** @description Files that arrived with the message from the network. PlanVortex does not store them: they live on the network (see `SocialFileUrl`). On WhatsApp every file is here, photos and videos included, and none has a `url`. */
+            files_urls: components["schemas"]["SocialFileUrl"][];
             /** @description Meta cards, for `elements_message` and `button_message`. */
             metaElements?: {
                 [key: string]: unknown;
@@ -5371,6 +5447,24 @@ export interface components {
              * @description When the credentials were last validated against Discord.
              */
             verified_date?: string;
+        };
+        /**
+         * @description A file that arrived from the network: a photo, a video, a voice note, a document or a sticker in a private message or a comment. **PlanVortex does not store it**: it stays on the network, and this says where to find it.
+         *
+         *     • **With `url`**: the network's own link, which your page can load directly. On Instagram, Messenger, Facebook, Threads and Discord it **expires**; on X and Bluesky it does not.
+         *     • **Without `url`**: the network only hands the file over with a token that never leaves PlanVortex (WhatsApp, and Telegram, whose download link carries the bot's token), or gives only an identifier (LinkedIn, a Bluesky video). Fetch it through the API.
+         *
+         *     Either way, when `url` is missing or stops loading, fetch the file with `GET .../messages/{id_message}/files/{index}` or `GET .../comments/{id_comment}/files/{index}`, where `index` is its position in the list. PlanVortex asks the network for it at that moment and streams it back without keeping a copy.
+         */
+        SocialFileUrl: {
+            /** @description The file's id on the network (WhatsApp's media id, Telegram's `file_id`, a Bluesky CID, a LinkedIn image URN). Treat it as opaque. */
+            external_id?: string;
+            /** @description Always present, so you can decide how to show it. When the network does not say, it is the most likely type: the file fetched through the API comes with its real `Content-Type`. */
+            mime_type: string;
+            /** @description The document's file name, when the network gives one. */
+            name?: string;
+            /** @description The network's direct link, when there is one a browser can open. It may expire. Never present on WhatsApp, Telegram, LinkedIn or a Bluesky video. */
+            url?: string;
         };
         /** @description The same person, on one channel. */
         SocialIdentifier: {
@@ -8359,6 +8453,7 @@ export interface operations {
              *     | --- | --- |
              *     | `700` | The account has no usable token: it has to be connected again |
              *     | `706` | The organization has no account slots left in its plan |
+             *     | `516` | The plan is free and this network needs a paid plan (today, `whatsapp`) |
              *     | `519` | This endpoint does not accept app credentials |
              *     | `544` | This temporal connect token was issued for a different social network |
              */
@@ -8405,7 +8500,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @description Templates as the network returns them. */
+                        /** @description Whether the account can start conversations. WhatsApp only, and absent when it couldn't be read. */
+                        health?: {
+                            /** @enum {string} */
+                            can_send_message: "AVAILABLE" | "LIMITED" | "BLOCKED";
+                            /** @description What blocks or limits it. Calling (SIP) errors are left out: they don't affect messaging. */
+                            issues: {
+                                /** @description WhatsApp's code: 141006 = payment method, 141010 = business not verified. */
+                                code: number;
+                                description?: string;
+                                /** @description Where the problem is: `PHONE_NUMBER`, `WABA`, `BUSINESS` or `APP`. */
+                                entity_type: string;
+                                solution?: string;
+                            }[];
+                            /** @description Warnings that are not errors, such as a display name still pending approval. */
+                            notes: string[];
+                        };
+                        /** @description Templates as the network returns them. For WhatsApp: `id`, `name`, `status`, `category`, `language`, `components` and, when rejected, `rejected_reason`. */
                         templates: {
                             [key: string]: unknown;
                         }[];
@@ -8574,6 +8685,36 @@ export interface operations {
                     "application/json": {
                         message: components["schemas"]["Message"];
                     };
+                };
+            };
+            400: components["responses"]["MessagesError"];
+        };
+    };
+    getMessageFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connected account identifier */
+                id_account: components["parameters"]["MessagesidAccount"];
+                /** @description The message's `_id`. */
+                id_message: string;
+                /** @description Organization identifier */
+                id_organization: components["parameters"]["MessagesidOrganization"];
+                /** @description Position of the file in `message_options.files_urls`, from 0. */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file, with the network's `Content-Type`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
                 };
             };
             400: components["responses"]["MessagesError"];
@@ -9423,6 +9564,34 @@ export interface operations {
             400: components["responses"]["CommentsCommentError"];
         };
     };
+    getCommentFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Comment identifier (PlanVortex's `_id`, not the network's `external_id`) */
+                id_comment: components["parameters"]["CommentsidComment"];
+                /** @description Organization identifier */
+                id_organization: components["parameters"]["CommentsidOrganization"];
+                /** @description Position of the file in the comment's `files_urls`, from 0. */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file, with the network's `Content-Type`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            400: components["responses"]["CommentsCommentError"];
+        };
+    };
     getCommentReplies: {
         parameters: {
             query?: {
@@ -9640,6 +9809,7 @@ export interface operations {
              *     | `553` | Some account is not part of this session. `data.accounts` lists them |
              *     | `706` | The new accounts do not fit in the plan. `data` carries `limit`, `used` and `requested`, and none was enabled |
              *     | `1101` | Invalid organization |
+             *     | `516` | The plan is free and one of the accounts belongs to a network that needs a paid plan (today, `whatsapp`) |
              */
             400: {
                 headers: {
@@ -11763,6 +11933,7 @@ export interface operations {
              *     | Code | Meaning |
              *     | --- | --- |
              *     | `514` | This endpoint needs app credentials: neither a user token nor a temporal connect token can issue one |
+             *     | `516` | The plan is free, `social_network` needs a paid plan (today, `whatsapp`) and the organization has no active account of it to reconnect |
              *     | `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |
              *     | `549` | `account_selection` is not `planvortex` or `integrator`, or it is `integrator` without `redirect_uri` or `social_network`. `data` says which |
              *     | `550` | `account_selection=integrator` on a network with no return to the browser (`telegram`) |

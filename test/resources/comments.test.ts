@@ -293,3 +293,29 @@ describe("comments.actions", () => {
         expect(await pv.comments.actions("whatsapp")).toBeUndefined();
     });
 });
+
+/** La foto o el sticker de un comentario, pedido a la red: PlanVortex no lo guarda (fase 43). */
+describe("comments.downloadFile", () => {
+    const FILE = `/organizations/${ORG_ID}/comments/${COMMENT_ID}/files/0`;
+
+    it("pide la posición en la ruta y devuelve los bytes con su tipo", async () => {
+        const calls = api.mockFile("get", FILE, new Uint8Array([0xff, 0xd8, 0xff]), { "content-type": "image/jpeg", "content-disposition": "inline" });
+        const pv = api.client();
+
+        const file = await pv.comments.downloadFile(ORG_ID, COMMENT_ID, 0);
+
+        expect(calls).toHaveLength(1);
+        expect(Array.from(file.data)).toEqual([0xff, 0xd8, 0xff]);
+        expect(file.contentType).toBe("image/jpeg");
+        expect(file.disposition).toBe("inline");
+    });
+
+    it("un archivo de más de 20 MB en Telegram: 1515 con `reason`", async () => {
+        api.mock("get", FILE, { code: 1515, message: "The network no longer has this file", data: { social_network: "telegram", reason: "too_big" } }, 400);
+        const pv = api.client();
+
+        const error = await pv.comments.downloadFile(ORG_ID, COMMENT_ID, 0).catch((e: unknown) => e);
+
+        expect(error).toMatchObject({ code: 1515, data: { reason: "too_big" } });
+    });
+});

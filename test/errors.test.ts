@@ -14,6 +14,7 @@ import {
     createErrorFromResponse,
     errorFamilyForCode,
     isPlanVortexError,
+    MessagingError,
     isTokenError,
 } from "../src/core/errors.js";
 
@@ -108,6 +109,29 @@ describe("la clasificacion de errores", () => {
      * El catalogo del servidor crece cada mes. Un codigo que esta libreria no conoce NO puede
      * romper: sale como base, con su code y su message intactos.
      */
+    /**
+     * Las dos de las plantillas de WhatsApp (10-11-2026): 1513, el formato que Meta rechazaria con
+     * un INVALID_FORMAT mudo, y 1514, Meta rechazandola al crearla. Nacieron por encima del 1512.
+     */
+    it("clasifica los codigos de las plantillas de WhatsApp como mensajeria", () => {
+        expect(apiError(1513, "Invalid WhatsApp message template", { field: "components", reason: "missing_examples" })).toBeInstanceOf(MessagingError);
+        expect(apiError(1514)).toBeInstanceOf(MessagingError);
+        expect(errorFamilyForCode(1514)).toBe("messaging");
+    });
+
+    /**
+     * Los archivos que llegan de la red (fase 43 del servidor): 1515 = la red ya no lo tiene, que
+     * sale también en un COMENTARIO y aun así es un MessagingError (el código es uno solo), y 1516 =
+     * ese mensaje o esa posición no existen. El 2602 (el comentario no tiene archivo ahí) cae en los
+     * 2600 de comentarios, que van con las publicaciones.
+     */
+    it("1515 y 1516, los archivos, son MessagingError; 2602 va con los comentarios", () => {
+        expect(apiError(1515)).toBeInstanceOf(MessagingError);
+        expect(apiError(1516)).toBeInstanceOf(MessagingError);
+        expect(errorFamilyForCode(1517)).toBeUndefined();
+        expect(errorFamilyForCode(2602)).toBe("publication");
+    });
+
     it("no rompe con un codigo desconocido", () => {
         const error = apiError(9999, "algo nuevo");
         expect(error).toBeInstanceOf(PlanVortexError);

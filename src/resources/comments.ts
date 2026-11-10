@@ -30,8 +30,8 @@
  *  - **Borrar borra en la red**, no sólo en la bandeja. La fila se conserva marcada para que la
  *    siguiente lectura no la vuelva a dar de alta.
  */
-import { Resource, requireId } from "./base.js";
-import type { Query, RequestOptions, RequestSender, SuccessResponse } from "./base.js";
+import { Resource, fileIndex, requireId } from "./base.js";
+import type { DownloadedFile, Query, RequestOptions, RequestSender, SuccessResponse } from "./base.js";
 import type { CatalogResource } from "./catalog.js";
 import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
@@ -220,6 +220,28 @@ export class CommentsResource extends Resource {
             threadQuery(options),
             options,
         );
+    }
+
+    /**
+     * Un archivo del comentario (la foto, el GIF, el sticker o el vídeo de `files_urls[index]`),
+     * pedido a la red en ese momento: PlanVortex no lo guarda y lo reenvía sin quedarse una copia.
+     *
+     * Hace falta cuando el archivo no trae `url` (LinkedIn solo da el id de la imagen; el enlace de
+     * Telegram lleva el token del bot; el vídeo de Bluesky es una lista HLS) o cuando el `url` ya no
+     * carga (Facebook, Threads y Discord lo caducan). Si la red ya no lo tiene, error 1515; si el
+     * comentario no tiene archivo en esa posición, 2602. Un bot de Telegram no baja más de 20 MB:
+     * pasado eso es un 1515 con `data.reason: "too_big"`.
+     *
+     * Un `disposition: "attachment"` es un documento que alguien de fuera colgó: no lo pintes dentro
+     * de tus propias páginas.
+     */
+    async downloadFile(
+        idOrganization: string,
+        idComment: string,
+        index: number,
+        options: RequestOptions = {},
+    ): Promise<DownloadedFile> {
+        return this.downloadFile_(`${this.path(idOrganization, idComment)}/files/${fileIndex(index)}`, options);
     }
 
     /**
