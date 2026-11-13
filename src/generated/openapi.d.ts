@@ -1124,6 +1124,8 @@ export interface paths {
          *     **The network decides how long a file lives.** WhatsApp lets go of a file 7 days after it arrived, and Meta drops one when the message or the story is deleted. After that the answer is **1515**, with `data.social_network`; on a number that also runs the WhatsApp Business app, the file is still there. **1516** means the message is not from this account, or has no file at that position.
          *
          *     Images, videos and audio come back `inline`. Anything else (a PDF, a spreadsheet, an HTML file, an SVG) comes back as an `attachment`: someone outside the business sent it, so don't render it inside your own pages.
+         *
+         *     **Playing it in a browser.** Not every format WhatsApp accepts plays in a browser: an AMR voice note or a 3GPP video plays in none, and Safari does not play the Ogg/Opus of an ordinary voice note. Add `playable=1` and an audio or a video comes back converted to a format every browser plays (`audio/mp4` or `video/mp4`). **1517** means it could not be converted; the original is still there without the parameter, and the original is what a download should give.
          */
         get: operations["getMessageFile"];
         put?: never;
@@ -1470,7 +1472,7 @@ export interface paths {
          *     You need it when a file has no `url`, or when its `url` stopped loading:
          *
          *     • **LinkedIn** gives only the image's id, never a link.
-         *     • **Telegram**'s download link carries the bot's token, so it never leaves PlanVortex. A bot can only download up to 20 MB: past that the answer is **1515** with `data.reason: "too_big"`, and the file is only visible in Telegram.
+         *     • **Telegram**'s download link carries the bot's token, so it never leaves PlanVortex. A bot can only download up to 20 MB: past that the answer is **1515** with `data.reason: "too_big"` and `data.max_mb: 20`, and the file is only visible in Telegram. Tell the user that, not that the file is gone: it is still there.
          *     • **Bluesky** videos are an HLS playlist that browsers other than Safari do not play; this returns the video file itself.
          *     • **Facebook, Threads and Discord** links expire; this reads the comment again and returns the file behind a fresh link.
          *     • **X** links do not expire, and reading a post again costs money, so X is not re-read: if its `url` no longer loads, the post was deleted and the answer is **1515**.
@@ -1478,6 +1480,8 @@ export interface paths {
          *     **1515** means the network no longer has the file (`data.social_network`), and **2602** that the comment has no file at that position. A comment of another organization is **1102**.
          *
          *     Images, videos and audio come back `inline`. Anything else comes back as an `attachment`: someone outside the business posted it, so don't render it inside your own pages.
+         *
+         *     **Playing it in a browser.** Not every audio or video format plays in every browser: Safari does not play the Ogg/Opus of a Telegram voice note, for instance. Add `playable=1` and an audio or a video comes back converted to a format every browser plays (`audio/mp4` or `video/mp4`). **1517** means it could not be converted; the original is still there without the parameter, and the original is what a download should give.
          *
          *     Requires the `comments:read` permission (`client_organization_comments:read` for apps) and a paid plan.
          */
@@ -1641,6 +1645,8 @@ export interface paths {
         /**
          * List the contacts of an organization
          * @description Newest first. `search` is a full-text search over the name, and `extra_data` filters by your own fields — which is what makes it possible to ask for "the contacts of this campaign" without keeping a second database.
+         *
+         *     **A WhatsApp contact may have no phone number.** Since 2026 Meta leaves the number out for people who use a WhatsApp username and have not dealt with that business number by phone in the last 30 days. Such a contact's WhatsApp `external_identifier` is their `user_id` (the BSUID, e.g. `ES.13491208655302741918`), not a phone number, so don't show it or dial it as one. You can still write to them: PlanVortex sends through the BSUID. When their number arrives later, the same contact gets it as `external_identifier` and keeps its `_id` and its messages.
          */
         get: operations["getContacts"];
         put?: never;
@@ -1722,7 +1728,7 @@ export interface paths {
          * The whole home screen in one call
          * @description Composes every block of the home screen in a single round trip: operational health, publications, publication metrics, account metrics, plan use, AI plans, the best AI plans and unread messages.
          *
-         *     **A block the caller cannot read is omitted, not refused.** The endpoint only demands the minimum permission — reading the organization — and then checks each block on its own: somebody who can only see publications still gets their home instead of a 403. `available_blocks` says which blocks were allowed, so an absent block for lack of permission and an absent block for lack of data can be drawn differently.
+         *     **A block the caller cannot read is omitted, not refused.** The endpoint lets in anyone who can read at least one block (the organization, publications, publication stats, account stats, accounts, messages or AI plans) and then checks each block on its own: somebody who can only see publications gets their home with that block, not a 403. A caller who can read none of them gets `520`. `available_blocks` says which blocks were allowed, so an absent block for lack of permission and an absent block for lack of data can be drawn differently.
          *
          *     The messages block is also omitted when the client's plan has no messaging.
          */
@@ -2462,7 +2468,7 @@ export interface paths {
         };
         /**
          * Unread messages in the organization
-         * @description How many incoming messages are still unread across every account of the organization. It is the number for a badge, and it costs one query: do not compute it by walking the conversations.
+         * @description How many incoming messages are still unread across every account of the organization, in total and per account. `total` is the number for a badge; `accounts` says which account holds them, so an inbox can mark the right one instead of making the user open each. It costs one query: do not compute it by walking the conversations.
          */
         get: operations["getUnreadMessages"];
         put?: never;
@@ -2666,6 +2672,8 @@ export interface paths {
          *
          *     **Four more are what TikTok's content sharing guidelines ask a composer to show**, and are `true` only on `tiktok` today: `visibility` (on TikTok, with no default), `interactions`, `commercial_content`, and `publish_settings`, which says the options each account allows must be read from `GET /organizations/{id_organization}/accounts/{id_account}/publish_settings` instead of a fixed list.
          *
+         *     **`statistics` says whether PlanVortex reads any metric of that network.** It is `true` on every network but `whatsapp`, which does not publish and has no metrics to read. Use it to decide which accounts to offer on a statistics screen (or filter the account list with `capability=statistics`) instead of finding out from an empty series.
+         *
          *     A `true` here is about the **network**, not about one account of it: a Telegram channel with no linked discussion group answers 965 on its comments even though the network has them.
          *
          *     Only needs authentication.
@@ -2806,7 +2814,7 @@ export interface webhooks {
          *
          *     A WhatsApp number can work in the **WhatsApp Business app** on a phone and in PlanVortex at the same time. What the business sends from the app arrives as `field: "message_echoes"`, with the message in `messageObj` as one of **ours**: `contact_id` is the person it was sent to and `from_contact_id` is absent. Store it in the thread; do not answer it. It does not open WhatsApp's 24-hour window.
          *
-         *     When a contact edits or deletes a message, no event is sent: the message itself changes, and the next read returns it with `edit_date` or `deleted_date`.
+         *     When a contact edits or deletes a message, or anyone reacts to one, no event is sent: the message itself changes, and the next read returns it with `edit_date`, `deleted_date` or its `reactions`.
          *
          *     ### Verifying the signature
          *
@@ -3959,6 +3967,8 @@ export interface components {
             publish_settings: boolean;
             /** @description The publication can say **who can reply** to it (`reply_control`): anyone, the account's followers, the profiles it follows or the profiles mentioned in the text. It is set when the publication goes out and cannot be changed afterwards. On a network that answers `false` the field is deleted on save, so do not offer it. Today only `threads`. */
             reply_control: boolean;
+            /** @description PlanVortex reads **statistics** for this network: account metrics (`GET /organizations/{id_organization}/accounts/{id_account}/metrics`, whose names come from `.../metric_list`) and, on the networks that publish, the metrics of each publication. It is `true` exactly when the network declares at least one account metric, so it never promises a statistics screen that would stay empty. Today every network but `whatsapp`, which does not publish and has none. */
+            statistics: boolean;
             /** @description The publication can say **who can see it** when it goes out (`visibility`). On a network that answers `false` the field is deleted on save, so do not offer it. Today `youtube` (public, unlisted, private) and `tiktok` (public, friends, followers, private; which ones each account allows comes from `publish_settings`). */
             visibility: boolean;
             webhooks: boolean;
@@ -4076,7 +4086,7 @@ export interface components {
         ContactsSocialIdentifierInput: {
             /** @description Only when you are keeping an identifier the API already gave you. */
             _id?: string;
-            /** @description The contact id on that channel — the phone number on WhatsApp, the PSID on Messenger. Optional in the model, but a contact without it cannot be written to, and it is what deduplicates on create. */
+            /** @description The contact id on that channel — the phone number on WhatsApp, the PSID on Messenger. Optional in the model, but a contact without it cannot be written to, and it is what deduplicates on create. On WhatsApp, for someone whose number you don't have, the `user_id` (BSUID) of a contact the API already returned also works: PlanVortex then writes to them through it. */
             external_identifier?: string;
             social_network: components["schemas"]["ContactChannel"];
         };
@@ -4322,7 +4332,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1309 client plan · 1400-1408 organization plan · 1500-1516 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2500-2599 publication fields, the ones that no longer fit in 900-996 (visibility, made for kids, TikTok's interactions and commercial content) · 2600-2699 comments, the ones that no longer fit in 945-948. */
+            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1309 client plan · 1400-1408 organization plan · 1500-1517 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2500-2599 publication fields, the ones that no longer fit in 900-996 (visibility, made for kids, TikTok's interactions and commercial content) · 2600-2699 comments, the ones that no longer fit in 945-948. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -4579,6 +4589,28 @@ export interface components {
             message_errors: components["schemas"]["Error"][];
             message_options: components["schemas"]["MessageOptions"];
             message_type: components["schemas"]["MessageType"];
+            /**
+             * @description The emoji reactions this message has on the network: WhatsApp, Instagram, Messenger and Bluesky. On WhatsApp, Instagram and Messenger each side has at most one reaction per message, and a new one replaces the old; on Bluesky one person can add several. Empty when there are none.
+             *
+             *     A reaction is not a new message and **no webhook event is sent** for it: the message itself changes, and the next read returns it with its `reactions`. A reaction to a message PlanVortex never received (sent before the account was connected) is not recorded. On Bluesky, which has no webhook, a new reaction is picked up within a few minutes, and a removed one the next time the conversation is read.
+             */
+            reactions?: {
+                /**
+                 * @description Who reacted: the `contact`, or the `account` itself (the business, from the network's own app or inbox).
+                 * @enum {string}
+                 */
+                by: "contact" | "account";
+                /**
+                 * Format: date-time
+                 * @description When the reaction was added.
+                 */
+                date: string;
+                /**
+                 * @description The emoji, as the network sends it.
+                 * @example 👍
+                 */
+                emoji: string;
+            }[];
             read: boolean;
             /** @description Absent on the messages that carry no text of their own, such as a `messaging_seen` acknowledgement. */
             text?: string;
@@ -4658,7 +4690,7 @@ export interface components {
         /**
          * @description What kind of message this is. `simple_message` and `file_message` work everywhere; the rest are network-specific shapes.
          *
-         *     `unsupported_message` only ever **arrives**: a WhatsApp message that cannot be shown through the API (a voice note, a document, a sticker, or a type WhatsApp does not let the API read). It carries no files, keeps the caption as `text` when there is one, and may carry the network's reason in `message_errors`. If the number is also in the WhatsApp Business app, the message can be read there. Sending one is refused.
+         *     `unsupported_message` only ever **arrives**: a message the network does not let the API show. On WhatsApp it is a type the API cannot read, with WhatsApp's reason in `message_errors`; if the number is also in the WhatsApp Business app, the message can be read there. On Instagram and Messenger it is something that is not a file, such as an audio shared from Instagram's own library, which arrives as an empty template. It carries no files and keeps the caption as `text` when there is one. Sending one is refused.
          * @enum {string}
          */
         MessageType: "simple_message" | "file_message" | "comment_message" | "publication_message" | "quick_reply_message" | "button_message" | "elements_message" | "postback_message" | "template_message" | "interactive_message" | "unsupported_message";
@@ -5469,7 +5501,7 @@ export interface components {
         /** @description The same person, on one channel. */
         SocialIdentifier: {
             _id: string;
-            /** @description Identifier of the contact on that channel. */
+            /** @description Identifier of the contact on that channel. On WhatsApp it is the phone number, digits only, **except** for someone who uses a WhatsApp username and has not shared their number with that business number: then it is their `user_id` (the BSUID, e.g. `ES.13491208655302741918`). It has a country code and a dot in front, so it never looks like a phone number. Don't show it or dial it as one. */
             external_identifier?: string;
             /**
              * Format: date-time
@@ -5477,6 +5509,8 @@ export interface components {
              */
             last_send_date?: string;
             social_network: components["schemas"]["ContactChannel"];
+            /** @description **WhatsApp only.** The person's business-scoped user id at Meta (BSUID), e.g. `ES.13491208655302741918`. Meta sends it with every message, and since 2026 it may leave the phone number out for people who use a username and have not dealt with that business number by phone in the last 30 days. When there is no phone number it is also the `external_identifier`, and PlanVortex writes to the contact through it. Treat it as opaque: it is scoped to Meta's business portfolio, and it changes when the person changes their number (PlanVortex updates the contact when that happens). */
+            user_id?: string;
         };
         /**
          * @description A social network supported by PlanVortex.
@@ -7942,8 +7976,10 @@ export interface operations {
                  * @description Only accounts whose network can do this. It is the same matrix `GET /social_capabilities` publishes, applied server-side: the way to ask for 'the accounts I can publish with' without keeping your own table of which network does what.
                  *
                  *     `comments` also looks at each account, not only at its network: a LinkedIn **personal profile** is left out, because only LinkedIn pages have a comment inbox. `total` counts the same way.
+                 *
+                 *     `statistics` leaves out the networks PlanVortex reads no metric from (today `whatsapp`): the accounts worth offering on a statistics screen.
                  */
-                capability?: "publications" | "messages" | "products" | "webhooks" | "persistent_menu" | "comments";
+                capability?: "publications" | "messages" | "products" | "webhooks" | "persistent_menu" | "comments" | "statistics";
                 /** @description The limit of records will be retrieved (pagination) */
                 limit?: number;
                 /** @description Free-text search over the account's name and username. */
@@ -8692,7 +8728,10 @@ export interface operations {
     };
     getMessageFile: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `1` (or `true`) returns an audio or a video in a format every browser plays: audio as AAC in an M4A (`audio/mp4`), video as H.264 with AAC in an MP4 (`video/mp4`). Ask for it only when your player can't open the original. Images and documents come back unchanged. **1517** means it could not be converted (`data.reason`: `too_big` past 64 MB, or `unreadable`); the original is still there without this parameter. Offer the original for download, not the converted copy. */
+                playable?: "1" | "true";
+            };
             header?: never;
             path: {
                 /** @description Connected account identifier */
@@ -8708,7 +8747,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The file, with the network's `Content-Type`. */
+            /** @description The file, with the network's `Content-Type`. With `playable`, an audio comes back as `audio/mp4` and a video as `video/mp4`. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9566,7 +9605,10 @@ export interface operations {
     };
     getCommentFile: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `1` (or `true`) returns an audio or a video in a format every browser plays: audio as AAC in an M4A (`audio/mp4`), video as H.264 with AAC in an MP4 (`video/mp4`). Ask for it only when your player can't open the original. Images and documents come back unchanged. **1517** means it could not be converted (`data.reason`: `too_big` past 64 MB, or `unreadable`); the original is still there without this parameter. Offer the original for download, not the converted copy. */
+                playable?: "1" | "true";
+            };
             header?: never;
             path: {
                 /** @description Comment identifier (PlanVortex's `_id`, not the network's `external_id`) */
@@ -9580,7 +9622,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The file, with the network's `Content-Type`. */
+            /** @description The file, with the network's `Content-Type`. With `playable`, an audio comes back as `audio/mp4` and a video as `video/mp4`. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -12001,7 +12043,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "total": 5,
+                     *       "accounts": [
+                     *         {
+                     *           "id_account": "6650f1c2a8b4e1d2c3f4a5b6",
+                     *           "total": 3
+                     *         },
+                     *         {
+                     *           "id_account": "6650f1c2a8b4e1d2c3f4a5b7",
+                     *           "total": 2
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": {
+                        /** @description The same count per account. Only accounts with something unread are listed, most unread first; an account that is missing has none. */
+                        accounts: {
+                            /** @description The account's `_id`. */
+                            id_account: string;
+                            total: number;
+                        }[];
+                        /** @description Unread incoming messages across every account. Always the sum of `accounts`. */
                         total: number;
                     };
                 };
@@ -12521,7 +12585,8 @@ export interface operations {
                      *         "made_for_kids": false,
                      *         "interactions": false,
                      *         "commercial_content": false,
-                     *         "publish_settings": false
+                     *         "publish_settings": false,
+                     *         "statistics": true
                      *       },
                      *       "google_business": {
                      *         "publications": false,
@@ -12537,7 +12602,8 @@ export interface operations {
                      *         "made_for_kids": false,
                      *         "interactions": false,
                      *         "commercial_content": false,
-                     *         "publish_settings": false
+                     *         "publish_settings": false,
+                     *         "statistics": true
                      *       },
                      *       "pinterest": {
                      *         "publications": true,
@@ -12553,7 +12619,8 @@ export interface operations {
                      *         "made_for_kids": false,
                      *         "interactions": false,
                      *         "commercial_content": false,
-                     *         "publish_settings": false
+                     *         "publish_settings": false,
+                     *         "statistics": true
                      *       },
                      *       "threads": {
                      *         "publications": true,
@@ -12569,7 +12636,25 @@ export interface operations {
                      *         "made_for_kids": false,
                      *         "interactions": false,
                      *         "commercial_content": false,
-                     *         "publish_settings": false
+                     *         "publish_settings": false,
+                     *         "statistics": true
+                     *       },
+                     *       "whatsapp": {
+                     *         "publications": false,
+                     *         "messages": true,
+                     *         "products": false,
+                     *         "webhooks": true,
+                     *         "persistent_menu": false,
+                     *         "comments": false,
+                     *         "destinations": false,
+                     *         "link": false,
+                     *         "reply_control": false,
+                     *         "visibility": false,
+                     *         "made_for_kids": false,
+                     *         "interactions": false,
+                     *         "commercial_content": false,
+                     *         "publish_settings": false,
+                     *         "statistics": false
                      *       }
                      *     }
                      */

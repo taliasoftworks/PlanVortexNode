@@ -128,8 +128,14 @@ describe("la clasificacion de errores", () => {
     it("1515 y 1516, los archivos, son MessagingError; 2602 va con los comentarios", () => {
         expect(apiError(1515)).toBeInstanceOf(MessagingError);
         expect(apiError(1516)).toBeInstanceOf(MessagingError);
-        expect(errorFamilyForCode(1517)).toBeUndefined();
         expect(errorFamilyForCode(2602)).toBe("publication");
+    });
+
+    //Un audio o un video que no se pudo convertir para el navegador (`playable`): sigue siendo del
+    //mensaje o del comentario, y el original se baja igual sin el parametro
+    it("1517, el archivo que no se pudo convertir, es MessagingError; 1518 ya no existe", () => {
+        expect(apiError(1517)).toBeInstanceOf(MessagingError);
+        expect(errorFamilyForCode(1518)).toBeUndefined();
     });
 
     it("no rompe con un codigo desconocido", () => {

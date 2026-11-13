@@ -48,8 +48,9 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
     //1513 y 1514 son las plantillas de WhatsApp: el formato que Meta rechazaria sin decir por que,
     //y Meta rechazandola al crearla. Nacieron por encima del techo, la cuarta vez que pasa. 1515 y
     //1516 son los archivos que llegan de la red: 1515 = la red ya no lo tiene (tambien en un
-    //comentario), 1516 = ese mensaje o esa posicion no existen.
-    { from: 1500, to: 1516, family: "messaging" },
+    //comentario), 1516 = ese mensaje o esa posicion no existen. 1517 = ese audio o video no se pudo
+    //convertir con `playable` (el original sigue ahi sin el parametro): la quinta vez.
+    { from: 1500, to: 1517, family: "messaging" },
     { from: 1600, to: 1601, family: "contact" },
     { from: 1900, to: 1906, family: "payment" },
     { from: 2000, to: 2099, family: "product" },
@@ -158,7 +159,7 @@ export class OrganizationError extends PlanVortexError {}
  * cambiando de plan. Por eso los dos rangos comparten clase.
  */
 export class PlanLimitError extends PlanVortexError {}
-/** 1500-1516 — conversaciones, mensajes, plantillas y sus archivos. Exige plan de pago. */
+/** 1500-1517 — conversaciones, mensajes, plantillas y sus archivos. Exige plan de pago. */
 export class MessagingError extends PlanVortexError {}
 /** 1600-1601 — contactos. */
 export class ContactError extends PlanVortexError {}

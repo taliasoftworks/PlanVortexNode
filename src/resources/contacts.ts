@@ -14,6 +14,9 @@
  *    lo explica y {@link ContactsResource.merge} lo evita.
  *  - **Borrar un contacto borra también sus mensajes**, y borrar los de la organización los borra
  *    todos. No hay papelera.
+ *  - **En WhatsApp un contacto puede no tener teléfono.** Quien usa nombre de usuario puede no
+ *    darnos su número: su `external_identifier` es entonces su BSUID (`ES.1349...`, el mismo valor
+ *    que `user_id`), que no se enseña como si fuera un teléfono. Ver el tipo `SocialIdentifier`.
  *  - **Exige plan de pago** (error 516).
  */
 import { Resource, requireId } from "./base.js";

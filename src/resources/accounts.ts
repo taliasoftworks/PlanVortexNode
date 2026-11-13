@@ -37,7 +37,7 @@ import type {
  * las que puedo publicar" sin mantener tu propia tabla de qué red hace qué.
  */
 export type AccountCapability =
-    "publications" | "messages" | "products" | "webhooks" | "persistent_menu" | "comments";
+    "publications" | "messages" | "products" | "webhooks" | "persistent_menu" | "comments" | "statistics";
 
 export interface AccountListOptions extends PageOptions {
     /** Búsqueda libre sobre el nombre y el usuario de la cuenta. */
@@ -48,7 +48,9 @@ export interface AccountListOptions extends PageOptions {
     accounts?: readonly string[] | undefined;
     /**
      * Sólo las cuentas cuya red sabe hacer esto. `comments` mira además la cuenta: deja fuera los
-     * perfiles personales de LinkedIn, que no tienen bandeja aunque las páginas sí.
+     * perfiles personales de LinkedIn, que no tienen bandeja aunque las páginas sí. `statistics`
+     * deja fuera las redes de las que PlanVortex no lee ninguna métrica (hoy WhatsApp): son las
+     * cuentas que tiene sentido ofrecer en una pantalla de estadísticas.
      */
     capability?: AccountCapability | undefined;
 }

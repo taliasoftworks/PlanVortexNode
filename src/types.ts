@@ -786,7 +786,15 @@ export type ContactUpdate = Schemas["ContactsContactUpdate"];
 /** Los campos propios de un contacto: el bloque de direccion y las seis propiedades libres. */
 export type ContactExtraData = Schemas["ContactExtraData"];
 
-/** El mismo contacto, en un canal. Es una red social o `email`. */
+/**
+ * El mismo contacto, en un canal. Es una red social o `email`.
+ *
+ * **EN WHATSAPP PUEDE NO HABER TELEFONO.** Desde 2026 Meta deja de mandar el numero de quien usa
+ * nombre de usuario y no ha tenido trato por telefono con ese numero de negocio en 30 dias. Lo que
+ * llega siempre es `user_id`, su BSUID (`ES.13491208655302741918`), y sin telefono es tambien el
+ * `external_identifier`. Se reconoce porque lleva el pais y un punto delante: nunca se parece a un
+ * telefono, y no se ensena ni se marca como si lo fuera. Se le puede escribir igual.
+ */
 export type SocialIdentifier = Schemas["SocialIdentifier"];
 
 /**

@@ -36,6 +36,7 @@ describe("catalog", () => {
                 webhooks: true,
                 persistent_menu: true,
                 comments: false,
+                statistics: false,
             },
         });
         const actions = api.mock("get", "/social_comment_actions", {

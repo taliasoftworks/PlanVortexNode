@@ -51,6 +51,7 @@ import type {
     PublicationPending,
     PublicationState,
     SocialAuthorizationMethod,
+    SocialIdentifier,
     SocialNetwork,
     Upload,
 } from "../src/index.js";
@@ -229,6 +230,23 @@ describe("los tipos publicos", () => {
         //Google Business: una resena cuelga de la ficha, no de una publicacion nuestra.
         expectTypeOf<Comment>().toHaveProperty("publication_external_id");
         expectTypeOf<Comment>().toHaveProperty("rating");
+    });
+
+    /**
+     * WhatsApp sin telefono: quien usa nombre de usuario puede no darnos su numero, y entonces el
+     * contacto se identifica por su BSUID, que tambien es su `external_identifier`. Opcional, porque
+     * solo existe en WhatsApp.
+     */
+    it("traen el BSUID de WhatsApp en el identificador del contacto, opcional", () => {
+        const sinTelefono: SocialIdentifier = {
+            _id: "66d04a6a427f4c43b9d97f70",
+            social_network: "whatsapp",
+            external_identifier: "ES.13491208655302741918",
+            user_id: "ES.13491208655302741918",
+        };
+        expectTypeOf<SocialIdentifier["user_id"]>().toEqualTypeOf<string | undefined>();
+        expect(sinTelefono.user_id).toBe(sinTelefono.external_identifier);
+        expect(bundle.components.schemas.SocialIdentifier.required).not.toContain("user_id");
     });
 
     /**

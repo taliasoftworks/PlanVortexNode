@@ -437,7 +437,7 @@ if you would rather branch on `error.family`.
 | 1100-1111            | Organizations                                          | `OrganizationError` |
 | 1200-1207            | Roles                                                  | `PlanVortexError`   |
 | 1300-1308, 1400-1408 | Plan quota exhausted, at client and organization level | `PlanLimitError`    |
-| 1500-1516            | Messaging                                              | `MessagingError`    |
+| 1500-1517            | Messaging                                              | `MessagingError`    |
 | 1600-1601            | Contacts                                               | `ContactError`      |
 | 1900-1906            | Payments                                               | `PlanVortexError`   |
 | 2000-2099            | Products                                               | `ProductError`      |

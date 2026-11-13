@@ -61,8 +61,8 @@ export class CatalogResource extends Resource {
     }
 
     /**
-     * La matriz red → qué sabe hacer: publicar, mensajes, productos, webhooks, menú persistente y
-     * comentarios.
+     * La matriz red → qué sabe hacer: publicar, mensajes, productos, webhooks, menú persistente,
+     * comentarios y estadísticas (`statistics`, hoy todas menos WhatsApp).
      *
      * Es lo que evita ofrecer una cuenta en una pantalla que su red no soporta — WhatsApp en el
      * compositor, LinkedIn en el chat.
