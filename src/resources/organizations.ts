@@ -24,7 +24,10 @@ import type {
 import type { OrganizationInput } from "./clients.js";
 
 export interface OrganizationOptions extends RequestOptions {
-    /** Trae también `actual_use` y `actual_asigned`. Cuesta una agregación: no lo pidas por costumbre. */
+    /**
+     * Trae también `actual_use`, `own_use` y `actual_asigned`. Cuesta una agregación: no lo pidas
+     * por costumbre.
+     */
     getUse?: boolean | undefined;
 }
 
@@ -160,15 +163,28 @@ export class OrganizationsResource extends Resource {
     /**
      * El consumo de esta organización y lo que ya tiene repartido a sus hijas.
      *
-     * Es un atajo de `get(id, {getUse: true})` que devuelve sólo las dos cifras, que es lo que se
+     * Es un atajo de `get(id, {getUse: true})` que devuelve sólo esas cifras, que es lo que se
      * quiere cuando se está pintando una barra de "3 de 5 cuentas".
+     *
+     * Ojo con cuál se pinta: `actual_use` es el de la BOLSA de la que tira la organización (ella
+     * más las carpetas sin plan que gastan de ella), el mismo con el que el servidor decide si
+     * cabe una cuenta más, así que todas las que comparten bolsa dan la misma cifra. Lo de ésta
+     * sola es `own_use`, ausente con un servidor anterior a noviembre de 2026.
      */
     async use(
         idOrganization: string,
         options: RequestOptions = {},
-    ): Promise<{ actual_use: PlanUseData | undefined; actual_asigned: PlanData | undefined }> {
+    ): Promise<{
+        actual_use: PlanUseData | undefined;
+        actual_asigned: PlanData | undefined;
+        own_use: PlanUseData | undefined;
+    }> {
         const organization = await this.get(idOrganization, { ...options, getUse: true });
-        return { actual_use: organization.actual_use, actual_asigned: organization.actual_asigned };
+        return {
+            actual_use: organization.actual_use,
+            actual_asigned: organization.actual_asigned,
+            own_use: organization.own_use,
+        };
     }
 
     /**

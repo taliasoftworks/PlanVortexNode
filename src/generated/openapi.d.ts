@@ -755,7 +755,9 @@ export interface paths {
         };
         /**
          * Get an organization by identifier
-         * @description Get one organization by its identifier
+         * @description Get one organization by its identifier, with what it is using of its plan (`actual_use`) and what it has been assigned (`actual_asigned`).
+         *
+         *     **Anyone with a role in the organization can read it**, whatever that role's permissions are, and so can anyone with a client role, an app of the client and a temporal token of this organization. It used to require `organization:read`, and that left a role allowed to connect accounts, create AI plans or publish without knowing how much of the plan was left. `organization:read` now means seeing the plan consumption: `GET /organizations/{id_organization}/use`, `GET /organizations/{id_organization}/limits` and the `plan_use` block of the dashboard.
          */
         get: operations["getOrganization"];
         /**
@@ -991,7 +993,7 @@ export interface paths {
          * Re-enable a disconnected account
          * @description Brings back an account that was removed, without going through the authorization again — as long as its stored token still works.
          *
-         *     It takes a **slot of the plan**, so it fails with error 706 when the organization is already at its account limit. It also turns the network's webhooks back on, on any plan but the free one. On the free plan a `whatsapp` account that is not active cannot be enabled (error 516), because its chat and its templates need a paid plan. One that is already active can still be reconnected.
+         *     It takes a **slot of the plan**, so it fails with error 706 when the organization is already at its account limit. It also turns the network's webhooks back on, on any plan but the free one. On the free plan a `whatsapp` or `google_business` account that is not active cannot be enabled (error 516), because everything those networks do needs a paid plan (chat and templates on WhatsApp, reviews on Google Business). One that is already active can still be reconnected.
          *
          *     **On `telegram` you normally never call this.** That network's accounts are born active — there is no authorization return in which to choose them, so PlanVortex takes the slot when the bot is added to the channel. The one case left is a channel that arrived while the plan was full: it stays off until a slot frees up, and this is what turns it on.
          *
@@ -1436,7 +1438,7 @@ export interface paths {
          *     - `read` is **yours**. It touches no social network, costs nothing and can always be set.
          *     - `hidden` **touches the network**, and not every network allows it — LinkedIn and Google Business have no hide endpoint at all and return error `946`. Check `GET /social_comment_actions` before offering the control.
          *
-         *     Requires the `comments:create` permission (`client_organization_comments:create` for apps) and a paid plan.
+         *     Setting `read` requires the `comments:read` permission (`client_organization_comments:read` for apps): marking a comment read is part of reading it, as opening a conversation is in the chat. Setting `hidden` also requires `comments:create` (`client_organization_comments:create`), the same as replying, and without it the whole request is refused with `520` and nothing changes, `read` included. Both need a paid plan.
          */
         put: operations["updateComment"];
         post?: never;
@@ -1565,7 +1567,7 @@ export interface paths {
          *
          *     **A network that cannot produce a link simply does not appear.** That is a legitimate answer, not a failure: it is what happens with `discord` in an organization that has not saved its own bot credentials yet (see `PUT /organizations/{id_organization}/social_credentials/{social_network}`).
          *
-         *     **On the free plan `whatsapp` does not appear either**, unless the organization already has an active WhatsApp account, which has to stay reconnectable. Its chat and its templates need a paid plan, so enabling a new account answers error 516. Asking for it by name gets you an empty list, not an error.
+         *     **On the free plan `whatsapp` and `google_business` do not appear either**, unless the organization already has an active account of that network, which has to stay reconnectable. WhatsApp only has chat and templates and Google Business only has reviews, and all of that needs a paid plan, so enabling a new account answers error 516. Asking for it by name gets you an empty list, not an error.
          *
          *     **An app cannot call this.** Connecting a social account is an OAuth flow with a person in front of it, so this endpoint only accepts a user token or a temporal connect token; with app credentials it answers error 519. The way an integration does it is to issue a temporal connect token with `GET /organizations/{id_organization}/temporal_connect_token` and hand it to its end user.
          *
@@ -2414,7 +2416,7 @@ export interface paths {
          *
          *     **It connects once.** As soon as an `account-connect` succeeds, the token stops being able to connect anything else and answers error 543; the `enable` calls that finish that same connection keep working until it expires. Issue a new one per connection — they are free and immediate.
          *
-         *     **If you pass `social_network`, the token is bound to that network** and will not connect any other (error 544). Leave it out to let the person pick. On the free plan, asking for `whatsapp` answers error 516 unless the organization already has an active WhatsApp account to reconnect: its chat and its templates need a paid plan.
+         *     **If you pass `social_network`, the token is bound to that network** and will not connect any other (error 544). Leave it out to let the person pick. On the free plan, asking for `whatsapp` or `google_business` answers error 516 unless the organization already has an active account of that network to reconnect: everything those networks do needs a paid plan.
          *
          *     **Or show the account picker yourself** with `account_selection=integrator`. By default PlanVortex shows the screen where the person picks which accounts to enable, and only then sends them to your `redirect_uri`. In this mode that screen is yours:
          *
@@ -3684,7 +3686,7 @@ export interface components {
         ClientsClient: {
             /** @example 66d04a6a427f4c43b9d97f54 */
             _id: string;
-            /** @description What is already handed out to the client's root organizations, which is what is left to assign. **Only present with `getUse=true`.** */
+            /** @description What is already handed out to organizations with a plan of their own (root organizations, or organizations under a folder), which is not available to the shared pool any more. **Only present with `getUse=true`.** */
             actual_asigned?: components["schemas"]["PlanData"];
             actual_plan: components["schemas"]["ClientsPlan"];
             /** @description Current consumption across every organization of the client. **Only present with `getUse=true`.** `twitter_credits` and `ai_credits` are what has been spent this calendar month. */
@@ -3696,6 +3698,8 @@ export interface components {
             /** Format: date-time */
             creation_date: string;
             name: string;
+            /** @description What the client's shared pool is using: the root organizations without a plan of their own and the folders below them, which is the `actual_use` each of them shows. **Only present with `getUse=true`.** Together with `actual_asigned` and the plan it splits the plan in three: used by the shared pool, free in the shared pool, and handed out to organizations with a plan of their own. `apps` is not here: apps belong to the client, not to an organization. */
+            pool_use?: components["schemas"]["PlanUseData"];
             /** @description Whether this client has already used its trial. */
             trial_tested?: boolean;
         };
@@ -3912,8 +3916,9 @@ export interface components {
             external_id: string;
             /** @description Whether the connected account wrote it. This is what separates "delete mine" from "delete theirs", and what keeps your own replies out of the inbox. */
             is_own: boolean;
-            /** @description Display name. Always present for a review, including anonymous ones, which get a placeholder rather than an empty string. */
+            /** @description Display name. Always present for a review, including anonymous ones, which get a placeholder rather than an empty string. On LinkedIn it is read from LinkedIn on every request and is not stored by PlanVortex: it is absent when LinkedIn does not return the member's profile, and LinkedIn only lets you cache it for 24 hours (see the LinkedIn section above). */
             name?: string;
+            /** @description Link to the author's picture, when the network gives one. On LinkedIn it is read on every request like `name`, it is a signed link that expires after a few weeks, and LinkedIn's servers refuse most downloads that do not come from a browser: show it in an `<img>`, do not copy it. */
             profile_pic?: string;
         };
         /**
@@ -4572,6 +4577,17 @@ export interface components {
              */
             deleted_date?: string;
             /**
+             * @description Only on messages **we** sent (`contact_id`): how far the message got, like the ticks in WhatsApp. `sent` means the network accepted it, `delivered` that it reached the contact's device, `read` that the contact saw it, and `failed` that the network rejected it (`message_errors` says why).
+             *
+             *     It only moves forward, and each network reports what it can. WhatsApp and Messenger report all three steps, Instagram reports `sent` and `read` (it does not report delivery), and Bluesky only `sent`. A read receipt also covers the earlier messages to that contact, the same as opening the chat.
+             *
+             *     Absent when PlanVortex does not know: messages from the contact, messages sent before 15 November 2026 and messages imported from the network's history.
+             *
+             *     No webhook event is sent for `delivered`: read the field on the message. A `read` arrives as `messaging_seen`.
+             * @enum {string}
+             */
+            delivery_status?: "sent" | "delivered" | "read" | "failed";
+            /**
              * Format: date-time
              * @description When the contact **edited** this message on the network (WhatsApp allows it for 15 minutes). `text` is already the edited text; the original is not kept.
              */
@@ -4611,6 +4627,7 @@ export interface components {
                  */
                 emoji: string;
             }[];
+            /** @description On a message from the contact, whether someone has read it in PlanVortex. On one of ours it is **not** a read receipt (messages sent from the WhatsApp Business app, or imported from the network, are stored as read): use `delivery_status`. */
             read: boolean;
             /** @description Absent on the messages that carry no text of their own, such as a `messaging_seen` acknowledgement. */
             text?: string;
@@ -4728,7 +4745,7 @@ export interface components {
             actual_asigned?: components["schemas"]["PlanData"];
             /** @description The slice of the client's plan assigned to this organization. **Absent when nothing was assigned**, and then the organization shares whatever its nearest parent with a plan has — or, failing that, the client's unassigned remainder. Ask `GET /organizations/{id_organization}/limits` for the effective numbers instead of reading this. */
             actual_plan?: components["schemas"]["PlanData"];
-            /** @description Current consumption. **Only present with `getUse=true`.** `twitter_credits` and `ai_credits` are what has been spent in the current calendar month; the rest is what exists right now. */
+            /** @description What the plan this organization draws from is using, which is the figure the server checks before letting one more account or integration in: the owner of that plan (this organization if it has a plan of its own, otherwise its nearest parent with one, otherwise the client's shared pool) plus the folders without a plan below it. Organizations sharing a pool therefore show the same `actual_use`; what each one uses on its own is `own_use`. **Only present with `getUse=true`.** `twitter_credits` and `ai_credits` are what has been spent in the current calendar month; the rest is what exists right now. */
             actual_use?: components["schemas"]["PlanUseData"];
             ai_context?: components["schemas"]["AiContext"];
             /** Format: date-time */
@@ -4736,6 +4753,8 @@ export interface components {
             /** @description The client this organization belongs to. */
             id_client: string;
             name: string;
+            /** @description What THIS organization uses on its own, without the folders it shares a plan with. **Only present with `getUse=true`.** `actual_use` is the consumption of the whole pool this organization draws from (the same figure the server checks before letting one more account in), so every organization without a plan of its own shows the same `actual_use`; `own_use` is what hangs from this one. Adding up the `own_use` of the organizations that share a pool gives that pool's `actual_use`. On an organization with a plan of its own and no folders below it, both are the same. */
+            own_use?: components["schemas"]["PlanUseData"];
             /** @description The organization this one hangs from. Absent on a root organization. */
             parent_organization?: string;
             /** @description The organization's own application credentials, by network. A network that is absent is not configured, and then it does not even appear as connectable. */
@@ -8489,7 +8508,7 @@ export interface operations {
              *     | --- | --- |
              *     | `700` | The account has no usable token: it has to be connected again |
              *     | `706` | The organization has no account slots left in its plan |
-             *     | `516` | The plan is free and this network needs a paid plan (today, `whatsapp`) |
+             *     | `516` | The plan is free and this network needs a paid plan (today, `whatsapp` and `google_business`) |
              *     | `519` | This endpoint does not accept app credentials |
              *     | `544` | This temporal connect token was issued for a different social network |
              */
@@ -9851,7 +9870,7 @@ export interface operations {
              *     | `553` | Some account is not part of this session. `data.accounts` lists them |
              *     | `706` | The new accounts do not fit in the plan. `data` carries `limit`, `used` and `requested`, and none was enabled |
              *     | `1101` | Invalid organization |
-             *     | `516` | The plan is free and one of the accounts belongs to a network that needs a paid plan (today, `whatsapp`) |
+             *     | `516` | The plan is free and one of the accounts belongs to a network that needs a paid plan (today, `whatsapp` and `google_business`) |
              */
             400: {
                 headers: {
@@ -11975,7 +11994,7 @@ export interface operations {
              *     | Code | Meaning |
              *     | --- | --- |
              *     | `514` | This endpoint needs app credentials: neither a user token nor a temporal connect token can issue one |
-             *     | `516` | The plan is free, `social_network` needs a paid plan (today, `whatsapp`) and the organization has no active account of it to reconnect |
+             *     | `516` | The plan is free, `social_network` needs a paid plan (today, `whatsapp` and `google_business`) and the organization has no active account of it to reconnect |
              *     | `532` | `redirect_uri` is not one of the app's registered `redirect_urls` |
              *     | `549` | `account_selection` is not `planvortex` or `integrator`, or it is `integrator` without `redirect_uri` or `social_network`. `data` says which |
              *     | `550` | `account_selection=integrator` on a network with no return to the browser (`telegram`) |

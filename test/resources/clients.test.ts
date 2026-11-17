@@ -106,7 +106,12 @@ describe("organizations", () => {
 
     it("lee la ficha y el consumo por la misma ruta", async () => {
         const calls = api.mock("get", `/organizations/${ORG_ID}`, {
-            organization: { ...organization, actual_use: planUseData, actual_asigned: planData },
+            organization: {
+                ...organization,
+                actual_use: planUseData,
+                actual_asigned: planData,
+                own_use: { ...planUseData, accounts: 1 },
+            },
         });
         const pv = api.client();
 
@@ -116,6 +121,20 @@ describe("organizations", () => {
         //`publications` sólo existe en el consumo: lo repartido a las hijas no lo lleva.
         expect(use.actual_use?.publications).toBe(200);
         expect(use.actual_asigned?.accounts).toBe(4);
+        //Lo de esta organización sola, frente a la bolsa que comparte
+        expect(use.own_use?.accounts).toBe(1);
+    });
+
+    it("con un servidor anterior a own_use, use() lo deja ausente en vez de inventarlo", async () => {
+        api.mock("get", `/organizations/${ORG_ID}`, {
+            organization: { ...organization, actual_use: planUseData, actual_asigned: planData },
+        });
+        const pv = api.client();
+
+        const use = await pv.organizations.use(ORG_ID);
+
+        expect(use.own_use).toBeUndefined();
+        expect(use.actual_use).toEqual(planUseData);
     });
 
     it("lista y crea organizaciones hijas", async () => {

@@ -6,8 +6,12 @@
  * es, cuándo acaba el periodo), y los números están dentro, en `actual_plan.plan_data`. Mirar
  * `plan_identifier` para saber los límites es el error clásico: un plan `custom` lleva los suyos.
  *
- * Y el CONSUMO no viaja si no se pide: `actual_use` y `actual_asigned` sólo aparecen con
- * `getUse: true`, porque contarlos es una agregación sobre todas las organizaciones del cliente.
+ * Y el CONSUMO no viaja si no se pide: `actual_use`, `pool_use` y `actual_asigned` sólo aparecen
+ * con `getUse: true`, porque contarlos es una agregación sobre todas las organizaciones del cliente.
+ * Entre los tres parten el plan: `actual_use` es lo gastado en TODAS las organizaciones (lo que se
+ * factura), `pool_use` lo gastado en la bolsa común (las organizaciones sin plan propio que tiran
+ * del cliente) y `actual_asigned` lo cedido a las que tienen plan propio. Lo libre en la bolsa es
+ * el plan menos los dos últimos.
  */
 import { Resource, requireId } from "./base.js";
 import type { RequestOptions, SuccessResponse } from "./base.js";
@@ -16,7 +20,11 @@ import { iteratePages } from "../core/pagination.js";
 import type { AiSettings, Client, ClientWithOrganizations, Organization, Paginated } from "../types.js";
 
 export interface ClientListOptions extends PageOptions {
-    /** Trae también `actual_use` y `actual_asigned`. Cuesta una agregación: no lo pidas por costumbre. */
+    /**
+     * Trae también el consumo (`actual_use`, `pool_use` y `actual_asigned` en un cliente;
+     * `actual_use`, `own_use` y `actual_asigned` en una organización). Cuesta una agregación: no lo
+     * pidas por costumbre.
+     */
     getUse?: boolean | undefined;
 }
 
