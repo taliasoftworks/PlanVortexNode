@@ -229,6 +229,7 @@ export type {
     ContactExtraData,
     ContactUpdate,
     Conversation,
+    ConversationRead,
     ConversationTotals,
     Dashboard,
     DashboardAiPlanRef,

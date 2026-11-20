@@ -9,8 +9,10 @@
  *  - **Exige plan de pago** (error 516), y el chat además exige que el plan lo incluya (515).
  *  - **La primera lectura de una cuenta es lenta.** Si en la base de datos no hay nada, el servidor
  *    baja las conversaciones de la red antes de contestar. La segunda ya sale de Mongo.
- *  - **Leer un hilo lo marca como leído**, y sólo en la primera página (`offset: 0`). No es un
- *    efecto secundario que se pueda apagar: es lo que hace bajar el contador de sin leer.
+ *  - **Leer un hilo lo marca como leído EN PLANVORTEX**, y sólo en la primera página
+ *    (`offset: 0`). No es un efecto secundario que se pueda apagar: es lo que hace bajar el
+ *    contador de sin leer. **La red no se entera**: el contacto sigue viendo sus mensajes sin leer
+ *    hasta que alguien llama a {@link MessagesResource.markConversationRead} o le contesta.
  *  - **La dirección de un mensaje no es un campo**: se deduce de cuál de los dos contactos trae.
  *    Para eso están `messageDirection`, `messageContact` y `messageContactId`.
  *  - **WhatsApp tiene una ventana de 24 horas.** Pasada la última respuesta del contacto sólo se
@@ -25,6 +27,7 @@ import type { PageOptions } from "../core/pagination.js";
 import { iteratePages } from "../core/pagination.js";
 import type {
     Conversation,
+    ConversationRead,
     ConversationTotals,
     Message,
     MessageInput,
@@ -130,8 +133,10 @@ export class MessagesResource extends Resource {
     /**
      * El hilo con un contacto, del más reciente al más antiguo.
      *
-     * **Pedir la primera página (`offset` 0 o sin `offset`) marca el hilo como leído.** Es lo que
-     * baja el contador de {@link unreadCount}; no hay forma de leerlo sin marcarlo.
+     * **Pedir la primera página (`offset` 0 o sin `offset`) marca el hilo como leído en
+     * PlanVortex.** Es lo que baja el contador de {@link unreadCount}; no hay forma de leerlo sin
+     * marcarlo. **A la red no le dice nada**: para que el contacto vea que lo leíste, usa
+     * {@link markConversationRead}.
      *
      * Aquí, y en el webhook, `contact_id`, `from_contact_id` y `message_options.files` vienen
      * POBLADOS. Usa `messageContact`, `messageContactId` y `messageFiles` en vez de asumirlo.
@@ -179,6 +184,10 @@ export class MessagesResource extends Resource {
      * En Facebook e Instagram sólo se admite **un** adjunto por mensaje (error 1509), y en WhatsApp
      * fuera de la ventana de 24 horas sólo se admite una plantilla.
      *
+     * **Contestar marca leído en la red lo que escribió el contacto**, justo antes de enviar, como
+     * {@link markConversationRead}: ve los ticks azules y luego la respuesta. Si eso falla, el
+     * mensaje sale igual.
+     *
      * Si el cuerpo de la plantilla tiene variables, sus valores van en `template_parameters`, en
      * orden: el primero rellena `{{1}}`, el segundo `{{2}}`. Sin ellos WhatsApp rechaza la plantilla.
      * Un valor vacío, con saltos de línea, tabuladores o más de cuatro espacios seguidos es un 1511
@@ -220,6 +229,33 @@ export class MessagesResource extends Resource {
             this.threadPath(idOrganization, idAccount, idContact),
             "message",
             body,
+            options,
+        );
+    }
+
+    /**
+     * Marca la conversación como leída **en PlanVortex y en la red, y el contacto lo ve**: los
+     * ticks azules en WhatsApp, el «Visto» en Messenger e Instagram, leída en la app de Bluesky.
+     * Llámalo cuando una persona haya visto de verdad la conversación; leerla con {@link list} no
+     * lo hace, y contestar con {@link send} lo hace solo.
+     *
+     * Marca el último mensaje del contacto y la red marca lo anterior. Repetirlo es gratis: si la
+     * red ya lo tiene, no se le pide nada. `network_read` dice si la red la tiene por leída al
+     * terminar (ver {@link ConversationRead}).
+     *
+     * ```ts
+     * const { network_read } = await pv.messages.markConversationRead(orgId, accountId, contactId);
+     * ```
+     */
+    async markConversationRead(
+        idOrganization: string,
+        idAccount: string,
+        idContact: string,
+        options: RequestOptions = {},
+    ): Promise<ConversationRead> {
+        return this.httpPost<ConversationRead>(
+            `${this.threadPath(idOrganization, idAccount, idContact)}/read`,
+            undefined,
             options,
         );
     }

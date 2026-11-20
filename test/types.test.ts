@@ -123,10 +123,12 @@ describe("el paquete OpenAPI commiteado", () => {
      * integrador (`account_selection: "integrator"`). La 143 es `GET .../accounts/{id}/publish_settings`,
      * lo que una cuenta de TikTok admite al publicar (su auditoria de contenido). La 144 y la 145
      * son los ARCHIVOS que llegan de la red, de un mensaje y de un comentario, que PlanVortex no
-     * guarda y pide a la red al abrirlos (`messages.downloadFile` y `comments.downloadFile`).
+     * guarda y pide a la red al abrirlos (`messages.downloadFile` y `comments.downloadFile`). La
+     * 146 es marcar una conversacion leida EN LA RED (`messages.markConversationRead`): leer con
+     * `list` ya no se lo dice al contacto.
      */
     it("trae las operaciones del alcance", () => {
-        expect(operations(bundle.paths)).toHaveLength(145);
+        expect(operations(bundle.paths)).toHaveLength(146);
         expect(Object.keys(bundle.webhooks)).toEqual(["comments"]);
     });
 
@@ -418,6 +420,39 @@ describe("la undecima red vive en las uniones cerradas, no en las abiertas", () 
      */
     it("no esta entre los canales de un contacto: Telegram no tiene mensajes directos", () => {
         expectTypeOf<OpenApiComponents["schemas"]["ContactChannel"]>().extract<"telegram">().toBeNever();
+    });
+});
+
+/**
+ * TikTok tiene comentarios desde la fase 42 del roadmap del servidor, pero por CUENTA: hacen falta
+ * una cuenta Business y una segunda autorizacion que se activa en el panel. La red entra en la
+ * union cerrada; lo que dice si una cuenta concreta los tiene es `extra_data.tiktok_business`.
+ */
+describe("TikTok tiene comentarios, cuenta a cuenta", () => {
+    it("esta en la lista cerrada de redes con comentarios", () => {
+        expectTypeOf<OpenApiComponents["schemas"]["CommentsCommentNetworkName"]>()
+            .extract<"tiktok">()
+            .toEqualTypeOf<"tiktok">();
+        expectTypeOf<CommentNetwork>().extract<"tiktok">().toEqualTypeOf<"tiktok">();
+    });
+
+    it("la cuenta dice si los tiene activos, y con que error", () => {
+        const conComentarios: Account = {
+            ...cuenta,
+            social_network: "tiktok",
+            extra_data: {
+                tiktok_business: {
+                    username: "panaderia",
+                    connected_at: "2026-11-19T09:00:00.000Z",
+                    comments: true,
+                    messages: false,
+                },
+            },
+        };
+        expect(conComentarios.extra_data?.tiktok_business?.comments).toBe(true);
+        type Estado = NonNullable<NonNullable<Account["extra_data"]>["tiktok_business"]>;
+        expectTypeOf<Estado["comments"]>().toEqualTypeOf<boolean | undefined>();
+        expectTypeOf<Estado["error_code"]>().toEqualTypeOf<number | undefined>();
     });
 });
 

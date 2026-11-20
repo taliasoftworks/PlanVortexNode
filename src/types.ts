@@ -315,6 +315,13 @@ export type ClientWithOrganizations =
  * paginas tienen bandeja de comentarios: LinkedIn no deja a ninguna app leer los comentarios de un
  * perfil, y ahi todo `comments.*` devuelve el error 2600. Se distinguen por
  * `extra_data.is_personal_profile`; ausente es pagina (las conectadas antes de que hubiera perfiles).
+ *
+ * En TikTok los comentarios piden una segunda autorizacion de la misma cuenta (TikTok API for
+ * Business, vale una cuenta personal o una Business), que se activa desde el panel de PlanVortex.
+ * Hasta entonces la
+ * cuenta publica y tiene estadisticas, y todo `comments.*` devuelve el 2600.
+ * `extra_data.tiktok_business` dice si estan activos (`comments`) y lleva `error_code` 2804
+ * cuando hay que volver a activarlos, sin tocar el `error_code` de la cuenta.
  */
 export type Account = Override<
     Schemas["Account"],
@@ -714,6 +721,16 @@ export type Conversation = Override<Schemas["MessagesConversation"], { contact: 
  * 2026—, no una fecha. Con `group_by: "day"` dos anos del mismo rango caen en el mismo valor.
  */
 export type ConversationTotals = Schemas["MessagesConversationTotals"];
+
+/**
+ * Lo que devuelve marcar una conversacion como leida EN LA RED (`messages.markConversationRead`).
+ *
+ * `network_read` dice si, al terminar, la red la tiene por leida: el contacto ve los ticks azules
+ * (WhatsApp) o el «Visto» (Messenger, Instagram). Es `false` si la red no tiene acuse de lectura,
+ * si fallo (llamar otra vez lo reintenta) o, en WhatsApp, si el ultimo mensaje tiene mas de 30
+ * dias. En PlanVortex queda leida de todas formas.
+ */
+export type ConversationRead = Schemas["MessagesConversationRead"];
 
 /**
  * Lo que se manda para escribir un mensaje.

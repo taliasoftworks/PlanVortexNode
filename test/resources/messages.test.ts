@@ -191,6 +191,20 @@ describe("messages.unreadCount", () => {
     });
 });
 
+describe("messages.markConversationRead", () => {
+    it("hace POST a /read del hilo, sin cuerpo, y devuelve network_read tal cual", async () => {
+        const calls = api.mock("post", `${THREAD}/read`, { success: true, network_read: false });
+        const pv = api.client();
+
+        const result = await pv.messages.markConversationRead(ORG_ID, ACCOUNT_ID, CONTACT_ID);
+
+        expect(calls[0]?.method).toBe("POST");
+        //`false` es una respuesta, no un error: la red no tiene «visto» o falló, y el hilo quedó
+        //leído en PlanVortex igual
+        expect(result).toEqual({ success: true, network_read: false });
+    });
+});
+
 describe("messages.removeByAccount", () => {
     it("borra por DELETE sobre la ruta de mensajes de la cuenta", async () => {
         const calls = api.mock("delete", `/organizations/${ORG_ID}/accounts/${ACCOUNT_ID}/messages`, {

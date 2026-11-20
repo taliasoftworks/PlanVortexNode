@@ -100,22 +100,22 @@ for await (const publication of pv.publications.iterate(orgId, { state: ["ready"
 
 ### What is available
 
-| Resource           | Methods                                                                                                                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Resource           | Methods                                                                                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pv.catalog`       | `socialNetworks`, `socialLimits`, `socialCapabilities`, `socialCommentActions`, `allowedAspectRatios`, `publicationLimits`, `allowedSocialPublications`, `allowedSocialMessages`, `plannerTemplates` — all cached in memory per client |
-| `pv.clients`       | `list`, `iterate`, `get`, `update`, `updateAiSettings`, `withOrganizations`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                             |
-| `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`, `updateAiContext`, `updateSocialCredentials`, `deleteSocialCredentials`                            |
-| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `destinations`, `destination`, `publishSettings`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                    |
-| `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                   |
-| `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `updateByAccount`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                           |
-| `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`, `downloadFile`                                                                       |
-| `pv.messages`      | `conversations`, `iterateConversations`, `conversationTotals`, `list`, `iterate`, `send`, `unreadCount`, `removeByAccount`, `templates`, `createTemplate`, `deleteTemplate`, `downloadFile`                        |
-| `pv.contacts`      | `list`, `iterate`, `get`, `create`, `update`, `merge`, `remove`, `removeAll`                                                                                                                                       |
-| `pv.products`      | `list`, `iterate`, `get`, `create`, `catalogs`, `createCatalog`                                                                                                                                                           |
-| `pv.integrations`  | `providers`, `list`, `iterate`, `get`, `connectLink`, `connect`, `reconnect`, `update`, `remove`, `pickerConfig`, `products`                                                                                       |
-| `pv.aiPlans`       | `create`, `get`, `list`, `iterate`, `results`, `validate`, `retry`, `regenerate`, `archive`, `unarchive`, `remove`                                                                                                 |
-| `pv.dashboard`     | `summary`, `metrics`, `publications`, `topPublications`, `publicationStats`, `use`                                                                                                                                 |
-| `pv.apps`          | `list`, `get`, `create`, `update`, `remove`, `secret`, `rotateSecret` — **needs a user token**, not app credentials                                                                                                |
+| `pv.clients`       | `list`, `iterate`, `get`, `update`, `updateAiSettings`, `withOrganizations`, `organizations`, `iterateOrganizations`, `createOrganization`, `updateOrganization`, `deleteOrganization`                                                 |
+| `pv.organizations` | `get`, `update`, `remove`, `children`, `iterateChildren`, `createChild`, `limits`, `use`, `createConnectToken`, `updateAiContext`, `updateSocialCredentials`, `deleteSocialCredentials`                                                |
+| `pv.accounts`      | `list`, `iterate`, `get`, `update`, `remove`, `metrics`, `metricList`, `destinations`, `destination`, `publishSettings`, `getPersistentMenu`, `setPersistentMenu`, `connectLinks`, `connect`, `enable`                                 |
+| `pv.uploads`       | `create`, `list`, `iterate`, `get`, `update`, `remove`, `import`                                                                                                                                                                       |
+| `pv.publications`  | `create`, `get`, `list`, `iterate`, `listByAccount`, `update`, `updateByAccount`, `remove`, `retry`, `metrics`, `stats`, `listOnNetwork`                                                                                               |
+| `pv.comments`      | `list`, `iterate`, `unreadCount`, `thread`, `threadByAccount`, `replies`, `reply`, `update`, `markRead`, `remove`, `actions`, `downloadFile`                                                                                           |
+| `pv.messages`      | `conversations`, `iterateConversations`, `conversationTotals`, `list`, `iterate`, `send`, `markConversationRead`, `unreadCount`, `removeByAccount`, `templates`, `createTemplate`, `deleteTemplate`, `downloadFile`                    |
+| `pv.contacts`      | `list`, `iterate`, `get`, `create`, `update`, `merge`, `remove`, `removeAll`                                                                                                                                                           |
+| `pv.products`      | `list`, `iterate`, `get`, `create`, `catalogs`, `createCatalog`                                                                                                                                                                        |
+| `pv.integrations`  | `providers`, `list`, `iterate`, `get`, `connectLink`, `connect`, `reconnect`, `update`, `remove`, `pickerConfig`, `products`                                                                                                           |
+| `pv.aiPlans`       | `create`, `get`, `list`, `iterate`, `results`, `validate`, `retry`, `regenerate`, `archive`, `unarchive`, `remove`                                                                                                                     |
+| `pv.dashboard`     | `summary`, `metrics`, `publications`, `topPublications`, `publicationStats`, `use`                                                                                                                                                     |
+| `pv.apps`          | `list`, `get`, `create`, `update`, `remove`, `secret`, `rotateSecret` — **needs a user token**, not app credentials                                                                                                                    |
 
 Every documented endpoint has a method. `pv.request(...)` is still there as an escape hatch — for
 an endpoint added to the API before this package catches up — and the response types are published,
@@ -212,7 +212,7 @@ if (actions?.delete_others) {
 }
 ```
 
-Four things that surprise everybody:
+Five things that surprise everybody:
 
 - **The inbox and the thread are not the same read.** The inbox is a photograph — `collected_date`
   says how old — and costs nothing. The thread is live, and on X it costs a credit per comment
@@ -221,8 +221,14 @@ Four things that surprise everybody:
   opaque `next_cursor` of the previous page, as `offset`.
 - **A Google Business review hangs off the listing, not off a post**, so it has its own route:
   `pv.comments.threadByAccount(orgId, accountId)`. It can arrive with a `rating` and no text at all.
-- **Reading a message thread marks it read.** First page only, and there is no way to opt out — it
-  is what makes `unreadCount()` go down.
+- **TikTok comments are turned on per account, in the PlanVortex dashboard.** It is a second
+  authorization of the account (personal or Business) that TikTok sends back to the dashboard,
+  so the API cannot do it. Until then that account answers error 2600;
+  `account.extra_data?.tiktok_business?.comments` says whether they are on.
+- **Reading a message thread marks it read in PlanVortex, not on the network.** First page only,
+  and there is no way to opt out: it is what makes `unreadCount()` go down. The contact still sees
+  their messages as unread until you call `pv.messages.markConversationRead()` (blue ticks on
+  WhatsApp, "Seen" on Messenger and Instagram) or reply, which marks them on its own.
 
 A complete, runnable version is in [examples/comments.ts](examples/comments.ts) — the badge, the
 inbox, the action matrix, a live thread and a reply. It only replies when you ask it to.
@@ -426,25 +432,26 @@ The class you catch comes from the **range** the code falls in. There is no sepa
 the same ranges are published in the API documentation, and `PLANVORTEX_ERROR_RANGES` exports them
 if you would rather branch on `error.family`.
 
-| Codes                | What went wrong                                        | Class               |
-| -------------------- | ------------------------------------------------------ | ------------------- |
-| 500-554              | Authentication, tokens, permissions, client apps       | `AuthError`         |
-| 601-612              | Users                                                  | `UserError`         |
-| 700-716              | Social accounts — disconnected, revoked, no slot left  | `AccountError`      |
-| 800-810              | Files                                                  | `FileError`         |
-| 900-996              | Publications, every per-network limit, the two rate brakes, Slack and Pinterest | `PublicationError`  |
-| 1000-1003            | General                                                | `PlanVortexError`   |
-| 1100-1111            | Organizations                                          | `OrganizationError` |
-| 1200-1207            | Roles                                                  | `PlanVortexError`   |
-| 1300-1308, 1400-1408 | Plan quota exhausted, at client and organization level | `PlanLimitError`    |
-| 1500-1517            | Messaging                                              | `MessagingError`    |
-| 1600-1601            | Contacts                                               | `ContactError`      |
-| 1900-1906            | Payments                                               | `PlanVortexError`   |
-| 2000-2099            | Products                                               | `ProductError`      |
-| 2100-2199            | AI plans                                               | `AiPlanError`       |
-| 2200-2299            | Integrations                                           | `IntegrationError`  |
+| Codes                | What went wrong                                                                      | Class               |
+| -------------------- | ------------------------------------------------------------------------------------ | ------------------- |
+| 500-554              | Authentication, tokens, permissions, client apps                                     | `AuthError`         |
+| 601-612              | Users                                                                                | `UserError`         |
+| 700-716              | Social accounts — disconnected, revoked, no slot left                                | `AccountError`      |
+| 800-810              | Files                                                                                | `FileError`         |
+| 900-996              | Publications, every per-network limit, the two rate brakes, Slack and Pinterest      | `PublicationError`  |
+| 1000-1003            | General                                                                              | `PlanVortexError`   |
+| 1100-1111            | Organizations                                                                        | `OrganizationError` |
+| 1200-1207            | Roles                                                                                | `PlanVortexError`   |
+| 1300-1308, 1400-1408 | Plan quota exhausted, at client and organization level                               | `PlanLimitError`    |
+| 1500-1517            | Messaging                                                                            | `MessagingError`    |
+| 1600-1601            | Contacts                                                                             | `ContactError`      |
+| 1900-1906            | Payments                                                                             | `PlanVortexError`   |
+| 2000-2099            | Products                                                                             | `ProductError`      |
+| 2100-2199            | AI plans                                                                             | `AiPlanError`       |
+| 2200-2299            | Integrations                                                                         | `IntegrationError`  |
 | 2500-2599            | Publication fields: visibility, made for kids, TikTok settings (only 2508 is thrown) | `PublicationError`  |
-| 2600-2699            | Comments: an account with no inbox (a LinkedIn personal profile) | `PublicationError`  |
+| 2600-2699            | Comments: an account with no inbox (a LinkedIn profile, TikTok without comments on)  | `PublicationError`  |
+| 2800-2899            | TikTok comments: turn them on again (2804), TikTok throttling (2805)                 | `PublicationError`  |
 
 A code outside every range — the catalogue grows — arrives as the base `PlanVortexError` with its
 `code` and `message` untouched, never swallowed and never renamed. And when the failure never got a

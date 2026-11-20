@@ -1083,13 +1083,17 @@ export interface paths {
          * Messages exchanged with one contact
          * @description The thread with one contact, newest first.
          *
-         *     **Reading the first page marks the thread as read** (`offset=0` only), which is what makes `unread_messages` go down. If PlanVortex has nothing stored for that contact it imports the thread from the network first.
+         *     **Reading the first page marks the thread as read in PlanVortex** (`offset=0` only), which is what makes `unread_messages` go down. **It does not tell the network**, so the contact still sees their messages as unread (grey ticks on WhatsApp, no "Seen" on Messenger or Instagram). That is on purpose: an assistant or an automation that reads the inbox should not tell your customers that somebody saw their message. When a person has seen it, call `POST .../messages/{id_contact}/read`.
+         *
+         *     If PlanVortex has nothing stored for that contact it imports the thread from the network first.
          */
         get: operations["getMessages"];
         put?: never;
         /**
          * Send a message to a contact
          * @description Writes to the contact through the account's network.
+         *
+         *     **Replying also marks the contact's messages as read on the network**, just before sending, so they see the blue ticks (WhatsApp) or "Seen" (Messenger, Instagram) and then your reply. If marking fails, the message is sent anyway.
          *
          *     What is valid depends on `message_type` and on the network:
          *
@@ -1101,6 +1105,34 @@ export interface paths {
          *     • `quick_reply_message`, `button_message`, `elements_message` and `interactive_message` are Meta-only shapes and each one requires its own block inside `message_options`.
          */
         post: operations["createMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{id_organization}/accounts/{id_account}/messages/{id_contact}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a conversation as read, on the network too
+         * @description Marks the thread with this contact as read in PlanVortex, as reading its first page does, **and tells the network, so the contact sees it**: blue ticks on WhatsApp, "Seen" on Messenger and Instagram, and the conversation marked read in the Bluesky app.
+         *
+         *     Call it when a person has actually seen the conversation. Reading messages with `GET` never does this, and replying with `POST .../messages/{id_contact}` does it on its own.
+         *
+         *     • It marks the contact's **latest** message; the network marks everything before it.
+         *     • Calling it again is free: once the network has the latest message as read, no request goes to the network until the contact writes again.
+         *     • `network_read` says whether the network has the conversation as read when the call ends. It is `false` when the network has no read receipts, when the network refused the request (calling again retries it), or on WhatsApp when the latest message is more than 30 days old, which WhatsApp does not let anyone mark. The read state in PlanVortex is updated either way.
+         *
+         *     Requires `messages:read` (`client_organization_messages:read` for apps), the same as reading the conversation, and a paid plan like the rest of messaging. On a network without conversations it answers error 1502.
+         */
+        post: operations["markConversationRead"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1406,7 +1438,7 @@ export interface paths {
          * The inbox: first-level comments across the whole organization
          * @description Served from PlanVortex's database, so it costs nothing and calls no social network. It is a **snapshot**: `collected_date` says when each row was last read. Open a thread to see what the network says right now.
          *
-         *     Ordered by `creation_date` descending — the date on the network, not the date we collected it — so rows from ten networks interleave correctly.
+         *     Ordered by `creation_date` descending — the date on the network, not the date we collected it — so rows from every network interleave correctly.
          *
          *     **On `telegram` the inbox starts the day the channel was connected.** The Bot API has no way to read the past: a bot only learns what happens while it is inside, so nothing written before the connection exists here and never will. Say so in your UI — an inbox that opens empty on a busy channel reads like a failure.
          *
@@ -1436,7 +1468,7 @@ export interface paths {
          * @description Two different kinds of change, accepted together because a panel changes them from the same place:
          *
          *     - `read` is **yours**. It touches no social network, costs nothing and can always be set.
-         *     - `hidden` **touches the network**, and not every network allows it — LinkedIn and Google Business have no hide endpoint at all and return error `946`. Check `GET /social_comment_actions` before offering the control.
+         *     - `hidden` **touches the network**, and not every network allows it — LinkedIn and Google Business have no hide endpoint at all and return error `946`. Check `GET /social_comment_actions` before offering the control. Hiding is moderating what **others** write: your own comments cannot be hidden on any network (error `2603`), only deleted. On TikTok, showing a comment that TikTok's moderation or its author's privacy settings keep hidden does not work, and the answer is error `2809`.
          *
          *     Setting `read` requires the `comments:read` permission (`client_organization_comments:read` for apps): marking a comment read is part of reading it, as opening a conversation is in the chat. Setting `hidden` also requires `comments:create` (`client_organization_comments:create`), the same as replying, and without it the whole request is refused with `520` and nothing changes, `read` included. Both need a paid plan.
          */
@@ -1446,7 +1478,7 @@ export interface paths {
          * Delete the comment on the social network
          * @description Deletes it **on the network** and marks the row `deleted: true` here. The row is kept on purpose rather than removed: if it were removed, the next read of the thread — or the webhook, which repeats — would create it again.
          *
-         *     Which comments you may delete depends on the network and on whose comment it is, and the two cases use different permissions of the network's own: `delete_own` for yours, `delete_others` for somebody else's. Instagram and X refuse the second; **on Google Business the only thing that can be deleted is your own reply**, never a review. Reading `GET /social_comment_actions` first is the difference between a button that works and one that always errors.
+         *     Which comments you may delete depends on the network and on whose comment it is, and the two cases use different permissions of the network's own: `delete_own` for yours, `delete_others` for somebody else's. Instagram, X and TikTok refuse the second; **on Google Business the only thing that can be deleted is your own reply**, never a review. Reading `GET /social_comment_actions` first is the difference between a button that works and one that always errors.
          *
          *     On X this costs credits.
          *
@@ -2668,7 +2700,7 @@ export interface paths {
          *
          *     `comments` is the coarse gate — whether the network has comments at all. Which *actions* it allows on one is a finer question and lives in `GET /social_comment_actions`, because the shape here is `{[capability]: boolean}` and nesting an object inside would break it.
          *
-         *     Today ten networks answer `comments: true`: Facebook, Instagram, Threads, LinkedIn, X, YouTube, Google Business, Bluesky, Discord and Telegram. TikTok, WhatsApp, Slack and Pinterest answer `false`, for reasons of theirs and not ours — on Pinterest the API *counts* a pin's comments and offers no way to read them, so the figure shows up in the publication's statistics and there is still no inbox.
+         *     Today `comments: true` is the answer of Facebook, Instagram, Threads, LinkedIn, TikTok, X, YouTube, Google Business, Bluesky, Discord and Telegram. WhatsApp, Slack and Pinterest answer `false`, for reasons of theirs and not ours — on Pinterest the API *counts* a pin's comments and offers no way to read them, so the figure shows up in the publication's statistics and there is still no inbox.
          *
          *     **Three of the keys are about publishing, not about reading.** `destinations` says the network publishes into places inside the account and every publication has to name one — a Pinterest board, read with `GET /organizations/{id_organization}/accounts/{id_account}/destinations`. `link` says a publication carries a destination link of its own, separate from its text. Both are `false` everywhere but `pinterest` today. `reply_control` says a publication can choose who can reply to it, and is `true` only on `threads`. The three are the reason to ask this matrix instead of keeping a list of your own: a composer with its own copy of which network has which field is exactly what drifted with the character limits.
          *
@@ -2676,7 +2708,7 @@ export interface paths {
          *
          *     **`statistics` says whether PlanVortex reads any metric of that network.** It is `true` on every network but `whatsapp`, which does not publish and has no metrics to read. Use it to decide which accounts to offer on a statistics screen (or filter the account list with `capability=statistics`) instead of finding out from an empty series.
          *
-         *     A `true` here is about the **network**, not about one account of it: a Telegram channel with no linked discussion group answers 965 on its comments even though the network has them.
+         *     A `true` here is about the **network**, not about one account of it: a Telegram channel with no linked discussion group answers 965 on its comments even though the network has them, and a TikTok account answers 2600 until comments are turned on for it in the dashboard.
          *
          *     Only needs authentication.
          */
@@ -2714,7 +2746,8 @@ export interface paths {
          *     | `discord` | yes | **no** — Discord has no hide, only delete | yes | yes |
          *     | `telegram` | yes | **no** — Telegram has no hide either | yes | yes — with the bot as an admin of the discussion group, otherwise error 969 |
          *     | `threads` | yes | yes | yes | **no** — deleting somebody else's reply is not a permission you lack, it is a call that does not exist in the API |
-         *     | `tiktok`, `whatsapp` | no | no | no | no |
+         *     | `tiktok` | yes | yes | yes | **no** — TikTok only lets you hide someone else's |
+         *     | `whatsapp`, `slack`, `pinterest` | no | no | no | no |
          *
          *     Only needs authentication.
          */
@@ -2800,7 +2833,7 @@ export interface webhooks {
          *
          *     `field: "comments"` is the one for this section, and the comment itself travels in **`commentObj`** — a property of its own, never in `messageObj`. That is deliberate: a comment is not a message, it has no contact and it hangs off a publication. A consumer that only understands messages sees `commentObj` as absent and ignores the change, which is exactly what should happen.
          *
-         *     **Which networks arrive this way:** Facebook and Instagram, because Meta pushes them. YouTube, LinkedIn and Google Business have no comment webhook, so those are polled by a background job and appear in the inbox within a few hours rather than instantly. X is polled too, and only when the organization turns it on, because reading replies there is billed per unit.
+         *     **Which networks arrive this way:** Facebook and Instagram, because Meta pushes them, and TikTok, which pushes them within a few minutes. YouTube, LinkedIn and Google Business have no comment webhook, so those are polled by a background job and appear in the inbox within a few hours rather than instantly. X is polled too, and only when the organization turns it on, because reading replies there is billed per unit.
          *
          *     **Meta repeats deliveries.** The same comment can arrive more than once; the backend is idempotent about it and so should you be — deduplicate on `commentObj.external_id`.
          *
@@ -2846,6 +2879,8 @@ export interface components {
          *
          *     On `linkedin` one authorization brings two kinds of account: the **personal profile** of whoever authorizes and each **page** they manage. Both publish and both have statistics, but only pages have a comment inbox: LinkedIn does not let any app read the comments on a member's posts, so on a profile every comment endpoint returns error `2600`. `extra_data.is_personal_profile` tells them apart.
          *
+         *     On `tiktok` comments need a second authorization of the same account (TikTok API for Business, personal and Business accounts alike), turned on from the PlanVortex dashboard. Until then the account publishes and has statistics, and every comment endpoint returns error `2600`. `extra_data.tiktok_business` says whether comments are on.
+         *
          *     `error_code` other than `0` means the connection is broken — an expired token, a permission taken away — and the account has to be connected again. On `telegram` nothing expires, because there is no account token: what breaks the connection is the bot being removed from the channel or losing its permission to post there (error 968). On `slack` the bot token does not expire either: what breaks it is the app being removed from the channel (error 980) or the channel being archived or deleted (error 985).
          */
         Account: {
@@ -2858,6 +2893,23 @@ export interface components {
             extra_data?: {
                 /** @description `linkedin` only. `true` on the personal profile of whoever authorized, `false` on a page. A profile publishes and has statistics but no comment inbox (error `2600`). Pages connected before personal profiles existed do not carry it, so treat absent as a page. */
                 is_personal_profile?: boolean;
+                /** @description `tiktok` only, and only once somebody has turned comments on for this account in the PlanVortex dashboard. Absent means comments were never turned on: the account publishes, and every comment endpoint answers `2600`. It cannot be turned on through the API, because TikTok sends that authorization back to the dashboard and nowhere else. */
+                tiktok_business?: {
+                    /** @description `true` when the comment inbox works for this account. Read it together with `error_code`. */
+                    comments?: boolean;
+                    /**
+                     * Format: date-time
+                     * @description When comments were turned on.
+                     */
+                    connected_at?: string;
+                    display_name?: string;
+                    /** @description Absent or `0` when it works. `2804` when TikTok no longer accepts the authorization behind comments: they have to be turned on again in the dashboard. It never touches the account's own `error_code`, so publishing keeps working. */
+                    error_code?: number;
+                    /** @description TikTok direct messages. Always `false` today. */
+                    messages?: boolean;
+                    /** @description The TikTok @username that authorized, already checked against this account's. Comments are only turned on for the same account that publishes. */
+                    username?: string;
+                };
             } & {
                 [key: string]: unknown;
             };
@@ -3854,6 +3906,7 @@ export interface components {
              *
              *     • A Google Business reply has no id of its own — it is a *field* of the review — so PlanVortex fabricates a stable one, `{reviewId}/reply`.
              *     • A Telegram comment lives in a **different chat** from the post it answers (the channel's linked discussion group), so it needs two ids at once and travels as `{thread}/{message}`: replying wants the first, deleting wants the second.
+             *     • A TikTok comment travels as `{video_id}/{comment_id}`, because TikTok asks for the video to hide a comment or to reply to it.
              */
             external_id: string;
             /**
@@ -3862,7 +3915,11 @@ export interface components {
              *     Facebook, Threads, LinkedIn, X, Bluesky, Discord and Telegram give a comment's files, and on Google Business they are the photos and videos of a review. Instagram and YouTube do not expose them in their APIs, so there the list is always empty. A comment that is only a photo has an empty `text` and one file here.
              */
             files_urls?: components["schemas"]["SocialFileUrl"][];
-            /** @description Hidden on the network. A hidden comment is never swept as deleted: on YouTube, hiding one makes the API stop returning it forever, and without that exception hiding would be indistinguishable from deleting. */
+            /**
+             * @description Hidden on the network. A hidden comment is never swept as deleted: on YouTube, hiding one makes the API stop returning it forever, and without that exception hiding would be indistinguishable from deleting.
+             *
+             *     On TikTok every new comment is hidden for a few minutes while TikTok reviews it. That state is not reported here: during a comment's first ten minutes this keeps the value it already had.
+             */
             hidden: boolean;
             /**
              * @description The connected account it arrived on.
@@ -3925,7 +3982,7 @@ export interface components {
          * @description A network that has comments. Treat it as an open list: a new one is added before your integration hears about it.
          * @enum {string}
          */
-        CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "google_business" | "bluesky" | "discord" | "telegram" | "threads";
+        CommentsCommentNetworkName: "facebook" | "instagram" | "twitter" | "linkedin" | "youtube" | "tiktok" | "google_business" | "bluesky" | "discord" | "telegram" | "threads";
         /** @description A live read: asked of the network and reconciled with what was stored. */
         CommentsCommentThread: {
             comments: components["schemas"]["CommentsComment"][];
@@ -4337,7 +4394,7 @@ export interface components {
          *     The catalogue grows with the product, so treat an unknown `code` as a generic failure instead of rejecting it.
          */
         Error: {
-            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1309 client plan · 1400-1408 organization plan · 1500-1517 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2500-2599 publication fields, the ones that no longer fit in 900-996 (visibility, made for kids, TikTok's interactions and commercial content) · 2600-2699 comments, the ones that no longer fit in 945-948. */
+            /** @description PlanVortex error code. Ranges: 500-554 auth, tokens, client apps and connect sessions · 601-612 user · 700-716 social accounts · 800-810 files · 900-996 publications · 1000-1003 general · 1100-1111 organizations · 1200-1207 roles · 1300-1309 client plan · 1400-1408 organization plan · 1500-1517 messaging · 1600-1601 contacts · 1900-1906 payments · 2000-2099 products · 2100-2199 AI plans · 2200-2299 integrations · 2500-2599 publication fields, the ones that no longer fit in 900-996 (visibility, made for kids, TikTok's interactions and commercial content) · 2600-2699 comments, the ones that no longer fit in 945-948 · 2700-2799 Discord · 2800-2899 TikTok comments, the ones that go through TikTok API for Business. */
             code: number;
             /** @description Extra context attached to the error, when there is any. */
             data?: {
@@ -4669,6 +4726,18 @@ export interface components {
             date: string;
             /** @description Unread messages **from the contact**. Ours never count. */
             unread_messages: number;
+        };
+        /**
+         * @example {
+         *       "success": true,
+         *       "network_read": true
+         *     }
+         */
+        MessagesConversationRead: {
+            /** @description Whether the contact now sees the conversation as read on the network. `false` when the network has no read receipts, refused the request (call again to retry), or the latest WhatsApp message is older than 30 days. */
+            network_read: boolean;
+            /** @constant */
+            success: true;
         };
         /** @description Two different answers, not one with optional fields: **without** `group_by` you get `{total}`, **with** it you get `{stats, group}`. Never both. */
         MessagesConversationTotals: {
@@ -5616,8 +5685,8 @@ export interface components {
          *     | `700` | The account is not connected — no valid token, or nothing to ask the network about. |
          *     | `936` | The publication was never sent, so it has no thread to read. |
          *     | `940` | The client's monthly X credits are exhausted. Only X. |
-         *     | `945` | This network has no comments (TikTok, WhatsApp). Carries `social_network` in `data`. |
-         *     | `946` | The network has comments but does not allow **this action**: hiding on LinkedIn or Google Business, deleting someone else's on Instagram or X, deleting a review. Carries `social_network` and `action` in `data`. See `GET /social_comment_actions`. |
+         *     | `945` | This network has no comments (WhatsApp, Slack, Pinterest). Carries `social_network` in `data`. |
+         *     | `946` | The network has comments but does not allow **this action**: hiding on LinkedIn or Google Business, deleting someone else's on Instagram, X or TikTok, deleting a review. Carries `social_network` and `action` in `data`. See `GET /social_comment_actions`. |
          *     | `947` | The comment no longer exists on the network. What is stored is a photograph; the network always wins. Carries `external_id` in `data`. |
          *     | `948` | The reply is empty or longer than the network allows. Carries the limit in `data.max`; the same number is published in `comment_characters` of `GET /social_limits`. |
          *     | `951` | The Google Business listing is not verified, so it cannot reply to its reviews. It is the state of the customer's profile, not of your token. |
@@ -5627,7 +5696,12 @@ export interface components {
          *     | `970` | Telegram is rate limiting the bot and the wait was longer than PlanVortex is willing to hold the request for. Carries `retry_after_seconds` in `data`: retry after it. |
          *     | `1101` | Invalid organization. |
          *     | `1501` | The comment's account could not be resolved. |
-         *     | `2600` | The network has comments but **this account** has none: a LinkedIn personal profile. LinkedIn does not let any app read a member's comments, so only pages have an inbox. Carries `social_network` and `id_account` in `data`. |
+         *     | `2600` | The network has comments but **this account** has none: a LinkedIn personal profile (LinkedIn does not let any app read a member's comments, so only pages have an inbox), or a TikTok account whose comments have not been turned on in the dashboard. Carries `social_network` and `id_account` in `data`. |
+         *     | `2601` | The network refused the action on the comment: a permission the app lacks, a comment that does not accept replies, an account that lost its access. |
+         *     | `2603` | Hiding or showing one of **your own** comments. No network allows it: delete it instead. |
+         *     | `2804` | TikTok: the authorization behind this account's comments expired or was revoked. Comments have to be turned on again in the dashboard; publishing is not affected. |
+         *     | `2805` | TikTok is rate limiting PlanVortex's app. Temporary: retry shortly. |
+         *     | `2809` | TikTok keeps this comment hidden (its moderation, or the privacy settings of whoever wrote it), so showing it had no effect. |
          */
         CommentsCommentError: {
             headers: {
@@ -7994,7 +8068,7 @@ export interface operations {
                 /**
                  * @description Only accounts whose network can do this. It is the same matrix `GET /social_capabilities` publishes, applied server-side: the way to ask for 'the accounts I can publish with' without keeping your own table of which network does what.
                  *
-                 *     `comments` also looks at each account, not only at its network: a LinkedIn **personal profile** is left out, because only LinkedIn pages have a comment inbox. `total` counts the same way.
+                 *     `comments` also looks at each account, not only at its network: a LinkedIn **personal profile** is left out, because only LinkedIn pages have a comment inbox, and so is a TikTok account whose comments have not been turned on (or stopped working, `extra_data.tiktok_business.error_code`). `total` counts the same way.
                  *
                  *     `statistics` leaves out the networks PlanVortex reads no metric from (today `whatsapp`): the accounts worth offering on a statistics screen.
                  */
@@ -8740,6 +8814,34 @@ export interface operations {
                     "application/json": {
                         message: components["schemas"]["Message"];
                     };
+                };
+            };
+            400: components["responses"]["MessagesError"];
+        };
+    };
+    markConversationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connected account identifier */
+                id_account: components["parameters"]["MessagesidAccount"];
+                /** @description Contact identifier */
+                id_contact: components["parameters"]["MessagesidContact"];
+                /** @description Organization identifier */
+                id_organization: components["parameters"]["MessagesidOrganization"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked as read in PlanVortex, and `network_read` says whether the network has it too */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagesConversationRead"];
                 };
             };
             400: components["responses"]["MessagesError"];

@@ -217,6 +217,8 @@ describe("las familias del catalogo", () => {
         //La versión por CUENTA del 945: la misma familia que él
         expect(errorFamilyForCode(945)).toBe("publication");
         expect(errorFamilyForCode(2600)).toBe("publication");
+        //Los comentarios de TikTok, con su credencial aparte
+        expect(errorFamilyForCode(2804)).toBe("publication");
         //El que lanza `accounts.publishSettings()` en una red sin ajustes de publicación
         expect(errorFamilyForCode(2508)).toBe("publication");
         expect(errorFamilyForCode(3000)).toBeUndefined();

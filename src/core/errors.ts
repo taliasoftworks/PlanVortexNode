@@ -64,6 +64,10 @@ export const PLANVORTEX_ERROR_RANGES: readonly PlanVortexErrorRange[] = [
     //LANZA: `accounts.publishSettings()` en una red que no los tiene.
     { from: 2500, to: 2599, family: "publication" },
     { from: 2600, to: 2699, family: "publication" },
+    //Los comentarios de TikTok, que van por otra API (TikTok API for Business) con su propia
+    //credencial: 2804 = hay que volver a activarlos, 2805 = TikTok frena a la app (temporal),
+    //2809 = TikTok mantiene oculto el comentario. Son comentarios, así que la misma familia.
+    { from: 2800, to: 2899, family: "publication" },
 ] as const;
 
 /**
